@@ -85,16 +85,6 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
         />
 
         <div className="flex items-end gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-3 border border-[#444]">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
-            aria-label="Attach file"
-          >
-            <Paperclip className="h-5 w-5" />
-          </button>
-
           <input
             type="text"
             value={input}
@@ -104,6 +94,16 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
             className="flex-1 bg-transparent border-0 outline-none text-white placeholder:text-[#8e8e8e] disabled:opacity-50 text-[15px]"
             disabled={disabled}
           />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
+            aria-label="Attach file"
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
 
           <button
             onClick={handleSubmit}
