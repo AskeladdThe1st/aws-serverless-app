@@ -63,31 +63,31 @@ const Index = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-[#212121]">
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-4 flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
+      <header className="border-b border-[#2f2f2f] bg-[#212121] px-6 py-4 flex items-center gap-3">
+        <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
           <Calculator className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold">Calculus Agent</h1>
-          <p className="text-xs text-muted-foreground">Powered by GPT-4 Vision + SymPy</p>
+          <h1 className="text-xl font-semibold text-white">Calculus Agent</h1>
+          <p className="text-xs text-[#8e8e8e]">Powered by GPT-4 Vision + SymPy</p>
         </div>
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="flex-1 overflow-y-auto px-6 py-6 bg-[#212121]">
+        <div className="max-w-3xl mx-auto">
           {messages.map((msg, idx) => (
             <ChatMessage key={idx} message={msg} />
           ))}
           {isLoading && (
             <div className="flex justify-start mb-4">
-              <div className="bg-secondary rounded-2xl px-6 py-4 animate-pulse">
+              <div className="bg-[#2f2f2f] rounded-2xl px-6 py-4 animate-pulse">
                 <div className="flex gap-2">
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-2 h-2 bg-[#8e8e8e] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-[#8e8e8e] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-[#8e8e8e] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
