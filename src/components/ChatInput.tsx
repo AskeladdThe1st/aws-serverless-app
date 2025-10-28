@@ -84,7 +84,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           onChange={handleFileChange}
         />
 
-        <div className="flex items-end gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-3 border border-[#444]">
+        <div className="flex items-center gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-3 border border-[#444]">
           <input
             type="text"
             value={input}
