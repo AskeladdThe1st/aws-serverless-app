@@ -80,7 +80,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <input
           ref={fileInputRef}
           type="file"
@@ -97,40 +97,43 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           onChange={handleFileChange}
         />
 
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          className="shrink-0"
-        >
-          <ImageIcon className="h-5 w-5" />
-        </Button>
+        <div className="flex-1 relative flex items-center gap-2 bg-secondary rounded-3xl border border-border px-4 py-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            aria-label="Upload image"
+          >
+            <ImageIcon className="h-5 w-5" />
+          </button>
 
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={() => cameraInputRef.current?.click()}
-          disabled={disabled}
-          className="shrink-0"
-        >
-          <Camera className="h-5 w-5" />
-        </Button>
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={disabled}
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            aria-label="Take photo"
+          >
+            <Camera className="h-5 w-5" />
+          </button>
 
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyPress}
-          placeholder="Type a calculus problem or upload an image..."
-          className="min-h-[50px] resize-none bg-secondary"
-          disabled={disabled}
-        />
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Type a calculus problem or upload an image..."
+            className="flex-1 bg-transparent border-0 outline-none text-sm placeholder:text-muted-foreground disabled:opacity-50"
+            disabled={disabled}
+          />
+        </div>
 
         <Button
           size="icon"
           onClick={handleSubmit}
           disabled={disabled || (!input.trim() && !selectedImage)}
-          className="shrink-0 bg-primary hover:bg-primary/90"
+          className="shrink-0 h-10 w-10 rounded-full bg-primary hover:bg-primary/90"
         >
           <Send className="h-5 w-5" />
         </Button>
