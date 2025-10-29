@@ -9,7 +9,7 @@ export async function solveProblem(
   imageBase64?: string
 ): Promise<CalcResponse> {
   // Replace with your Lambda function URL
-  const LAMBDA_URL = 'https://67mw44qp3acn733q4lflxzt52u0ynzyr.lambda-url.us-east-1.on.aws/';
+  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
   try {
     const response = await fetch(LAMBDA_URL, {
