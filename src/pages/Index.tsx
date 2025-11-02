@@ -48,13 +48,13 @@ const Index = () => {
       console.error('Error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to solve the problem. Make sure your Lambda URL is configured.',
+        description: 'Failed to solve the problem. Please check the console for details.',
         variant: 'destructive',
       });
 
       const errorMessage: Message = {
         role: 'assistant',
-        content: 'Sorry, I encountered an error processing your request. Please make sure the Lambda function URL is configured in `src/lib/lambda.ts`.',
+        content: 'Sorry, I encountered an error processing your request. This might be due to a CORS issue or the Lambda function not responding correctly.',
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
