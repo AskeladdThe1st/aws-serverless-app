@@ -20,17 +20,6 @@ export async function solveProblem(
     if (!response.ok) throw new Error(`Lambda error: ${response.status}`);
 
     const data = await response.json();
-
-    // >>> render the solution in the chat window <<<
-    (window as any).messages.push({
-      role: 'assistant',
-      content: "Here's the solution:",
-      expression: data.expression,
-      result: data.result,
-      steps: data.steps,
-    });
-    (window as any).renderMessages();
-
     return data;
   } catch (error) {
     console.error('Error calling Lambda:', error);
