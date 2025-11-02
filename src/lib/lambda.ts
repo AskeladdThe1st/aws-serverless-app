@@ -8,7 +8,7 @@ export async function solveProblem(
   text: string,
   imageBase64?: string
 ): Promise<CalcResponse> {
-  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
+  const LAMBDA_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lambda-proxy`;
 
   try {
     const response = await fetch(LAMBDA_URL, {
