@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { useToast } from '@/hooks/use-toast';
@@ -14,6 +14,25 @@ const Index = () => {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Force KaTeX to re-render after new messages
+  useEffect(() => {
+    if (messagesContainerRef.current && typeof window !== 'undefined') {
+      const renderMathInElement = (window as any).renderMathInElement;
+      if (renderMathInElement) {
+        renderMathInElement(messagesContainerRef.current, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\[', right: '\\]', display: true },
+            { left: '\\(', right: '\\)', display: false }
+          ],
+          throwOnError: false
+        });
+      }
+    }
+  }, [messages]);
 
   const handleSend = async (text: string, image?: File) => {
     if ((!text.trim() && !image) || isLoading) return;
@@ -77,7 +96,7 @@ const Index = () => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-6 bg-[#212121]">
-        <div className="max-w-3xl mx-auto">
+        <div ref={messagesContainerRef} className="max-w-3xl mx-auto">
           {messages.map((msg, idx) => (
             <ChatMessage key={idx} message={msg} />
           ))}
