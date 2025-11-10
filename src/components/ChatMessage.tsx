@@ -1,5 +1,4 @@
-import { BlockMath, InlineMath } from 'react-katex';
-import 'katex/dist/katex.min.css';
+import { ResponseView } from './ResponseView';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -12,37 +11,6 @@ export interface Message {
 
 export const ChatMessage = ({ message }: { message: Message }) => {
   const isUser = message.role === 'user';
-  
-  const renderMath = (text: string) => {
-    // Split by display math ($$...$$ or \[...\])
-    const parts = text.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/);
-    
-    return parts.map((part, index) => {
-      // Display math
-      if (part.startsWith('$$') && part.endsWith('$$')) {
-        const math = part.slice(2, -2);
-        return <BlockMath key={index} math={math} />;
-      }
-      if (part.startsWith('\\[') && part.endsWith('\\]')) {
-        const math = part.slice(2, -2);
-        return <BlockMath key={index} math={math} />;
-      }
-      
-      // Inline math ($...$ or \(...\))
-      const inlineParts = part.split(/(\$[^\$]+\$|\\\([^\)]+\\\))/);
-      return inlineParts.map((inlinePart, inlineIndex) => {
-        if (inlinePart.startsWith('$') && inlinePart.endsWith('$')) {
-          const math = inlinePart.slice(1, -1);
-          return <InlineMath key={`${index}-${inlineIndex}`} math={math} />;
-        }
-        if (inlinePart.startsWith('\\(') && inlinePart.endsWith('\\)')) {
-          const math = inlinePart.slice(2, -2);
-          return <InlineMath key={`${index}-${inlineIndex}`} math={math} />;
-        }
-        return <span key={`${index}-${inlineIndex}`}>{inlinePart}</span>;
-      });
-    });
-  };
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
@@ -61,15 +29,13 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           />
         )}
         
-        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere">
-          {renderMath(message.content)}
-        </div>
+        <ResponseView content={message.content} />
 
         {isUser && message.expression && (
           <div className="mt-4 pt-4 border-t border-[#444]">
             <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Expression:</div>
-            <div className="font-mono text-sm bg-[#1a1a1a] rounded p-2 mb-3 break-words overflow-wrap-anywhere">
-              {renderMath(`$$${message.expression}$$`)}
+            <div className="font-mono text-sm bg-[#1a1a1a] rounded p-2 mb-3">
+              <ResponseView content={`$$${message.expression}$$`} />
             </div>
           </div>
         )}
@@ -77,8 +43,8 @@ export const ChatMessage = ({ message }: { message: Message }) => {
         {message.result && (
           <div className="mt-3">
             <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Result:</div>
-            <div className="text-base font-semibold break-words overflow-wrap-anywhere">
-              {renderMath(message.result)}
+            <div className="text-base font-semibold">
+              <ResponseView content={message.result} />
             </div>
           </div>
         )}
@@ -86,9 +52,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
         {message.steps && (
           <div className="mt-3">
             <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Step-by-step solution:</div>
-            <div className="text-sm leading-relaxed break-words overflow-wrap-anywhere">
-              {renderMath(message.steps)}
-            </div>
+            <ResponseView content={message.steps} />
           </div>
         )}
       </div>
