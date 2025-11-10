@@ -49,15 +49,15 @@ export const ChatMessage = ({ message }: { message: Message }) => {
       <div
         className={`max-w-[80%] rounded-2xl px-6 py-4 ${
           isUser
-            ? 'bg-card text-card-foreground'
-            : 'bg-card text-card-foreground'
+            ? 'bg-[#2f2f2f] text-white'
+            : 'bg-[#2f2f2f] text-white'
         }`}
       >
         {message.imageUrl && (
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-w-full rounded-lg mb-3 border border-border"
+            className="max-w-full rounded-lg mb-3 border border-[#444]"
           />
         )}
         
@@ -65,10 +65,10 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           {renderMath(message.content)}
         </div>
 
-        {message.expression && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Expression:</div>
-            <div className="font-mono text-sm bg-background rounded p-2 mb-3 break-words overflow-wrap-anywhere">
+        {isUser && message.expression && (
+          <div className="mt-4 pt-4 border-t border-[#444]">
+            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Expression:</div>
+            <div className="font-mono text-sm bg-[#1a1a1a] rounded p-2 mb-3 break-words overflow-wrap-anywhere">
               {renderMath(`$$${message.expression}$$`)}
             </div>
           </div>
@@ -76,7 +76,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
 
         {message.result && (
           <div className="mt-3">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Result:</div>
+            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Result:</div>
             <div className="text-base font-semibold break-words overflow-wrap-anywhere">
               {renderMath(message.result)}
             </div>
@@ -85,7 +85,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
 
         {message.steps && (
           <div className="mt-3">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Step-by-step solution:</div>
+            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Step-by-step solution:</div>
             <div className="text-sm leading-relaxed break-words overflow-wrap-anywhere">
               {renderMath(message.steps)}
             </div>
