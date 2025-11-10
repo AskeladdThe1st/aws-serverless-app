@@ -1,4 +1,4 @@
-import { ResponseView } from './ResponseView';
+import ResponseView from './ResponseView';
 
 export interface Message {
   role: 'user' | 'assistant';
