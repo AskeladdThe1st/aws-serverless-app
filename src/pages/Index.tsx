@@ -84,7 +84,7 @@ const Index = () => {
   return (
     <div className="flex flex-col h-screen bg-[#212121]">
       {/* Header */}
-      <header className="border-b border-[#2f2f2f] bg-[#212121] px-6 py-4 flex items-center gap-3">
+      <header className="border-b border-[#2f2f2f] bg-[#212121] px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 flex-shrink-0">
         <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
           <Calculator className="h-6 w-6 text-white" />
         </div>
@@ -95,8 +95,8 @@ const Index = () => {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 bg-[#212121]">
-        <div ref={messagesContainerRef} className="max-w-3xl mx-auto">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 bg-[#212121]">
+        <div ref={messagesContainerRef} className="max-w-3xl mx-auto w-full">
           {messages.map((msg, idx) => (
             <ChatMessage key={idx} message={msg} />
           ))}
