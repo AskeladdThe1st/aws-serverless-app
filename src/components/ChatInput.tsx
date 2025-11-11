@@ -109,7 +109,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
             type="button"
             onClick={() => cameraInputRef.current?.click()}
             disabled={disabled}
-            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
+            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1 md:hidden"
             aria-label="Take photo"
           >
             <Camera className="h-5 w-5" />
