@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip } from 'lucide-react';
+import { Send, Paperclip, Camera } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChatInputProps {
@@ -13,6 +13,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const handleImageSelect = (file: File) => {
@@ -83,6 +84,15 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           className="hidden"
           onChange={handleFileChange}
         />
+        
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
         <div className="flex items-center gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-3 border border-[#444]">
           <input
@@ -94,6 +104,16 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
             className="flex-1 bg-transparent border-0 outline-none text-white placeholder:text-[#8e8e8e] disabled:opacity-50 text-[15px]"
             disabled={disabled}
           />
+
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={disabled}
+            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
+            aria-label="Take photo"
+          >
+            <Camera className="h-5 w-5" />
+          </button>
 
           <button
             type="button"

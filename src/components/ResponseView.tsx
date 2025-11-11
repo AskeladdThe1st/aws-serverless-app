@@ -10,8 +10,15 @@ interface ResponseViewProps {
 
 // Normalize common math delimiters from LLMs (\(...\), \[...\]) to $...$ and $$...$$.
 // Skips fenced code blocks to avoid mangling code samples.
+// Also removes SymPy verification sections.
 function normalizeMathDelimiters(input: string): string {
-  const parts = input.split(/```/); // odd indices are inside code fences
+  // Remove SymPy verification section (including variations in casing and formatting)
+  let cleaned = input
+    .replace(/verification with sympy[\s\S]*?(?=\n\n[A-Z]|\n\n$|$)/gi, '')
+    .replace(/```python[\s\S]*?from sympy[\s\S]*?```/gi, '')
+    .replace(/###?\s*verification[\s\S]*?(?=\n\n[A-Z#]|\n\n$|$)/gi, '');
+  
+  const parts = cleaned.split(/```/); // odd indices are inside code fences
   const converted = parts.map((segment, idx) => {
     if (idx % 2 === 1) return segment; // inside code block, leave as-is
     return segment

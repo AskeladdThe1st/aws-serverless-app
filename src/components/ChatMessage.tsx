@@ -15,7 +15,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-6 py-4 ${
+        className={`w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
           isUser
             ? 'bg-[#2f2f2f] text-white'
             : 'bg-[#2f2f2f] text-white'
