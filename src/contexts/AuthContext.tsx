@@ -17,27 +17,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   
   useEffect(() => {
-    // Check initial auth state
-    checkUser();
-    
-    // Listen for auth changes
-    const unsubscribe = Hub.listen('auth', ({ payload }) => {
-      if (payload.event === 'signedIn' || payload.event === 'signedOut') {
-        checkUser();
+    // Check initial auth state - wrapped in try/catch to handle missing Amplify config
+    const initAuth = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        // Amplify not configured or user not authenticated - this is fine for guest mode
+        console.log('Auth not configured or user not logged in - continuing as guest');
+        setUser(null);
       }
-    });
+    };
     
-    return () => unsubscribe();
-  }, []);
-  
-  const checkUser = async () => {
+    initAuth();
+    
+    // Listen for auth changes - only if Amplify is available
     try {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-    } catch {
-      setUser(null);
+      const unsubscribe = Hub.listen('auth', ({ payload }) => {
+        if (payload.event === 'signedIn' || payload.event === 'signedOut') {
+          initAuth();
+        }
+      });
+      
+      return () => unsubscribe();
+    } catch (error) {
+      // Hub not available - continue without auth listener
+      console.log('Auth Hub not available - auth changes won\'t be detected');
     }
-  };
+  }, []);
   
   return (
     <AuthContext.Provider
