@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useAuthenticator } from '@aws-amplify/ui-react';
+import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
+import { Hub } from 'aws-amplify/utils';
 
 interface AuthContextType {
   user: any;
@@ -12,8 +13,31 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuthenticator((context) => [context.user]);
+  const [user, setUser] = useState<any>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  
+  useEffect(() => {
+    // Check initial auth state
+    checkUser();
+    
+    // Listen for auth changes
+    const unsubscribe = Hub.listen('auth', ({ payload }) => {
+      if (payload.event === 'signedIn' || payload.event === 'signedOut') {
+        checkUser();
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+  
+  const checkUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+    } catch {
+      setUser(null);
+    }
+  };
   
   return (
     <AuthContext.Provider

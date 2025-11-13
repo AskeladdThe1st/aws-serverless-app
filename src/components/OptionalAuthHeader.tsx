@@ -1,15 +1,22 @@
 import { Button } from '@/components/ui/button';
 import { LogOut, LogIn, Crown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAuthenticator } from '@aws-amplify/ui-react';
+import { signOut } from 'aws-amplify/auth';
 
 interface OptionalAuthHeaderProps {
   onUpgradeClick?: () => void;
 }
 
 export const OptionalAuthHeader = ({ onUpgradeClick }: OptionalAuthHeaderProps) => {
-  const { isAuthenticated, openAuthModal } = useAuth();
-  const { user, signOut } = useAuthenticator((context) => [context.user]);
+  const { user, isAuthenticated, openAuthModal } = useAuth();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   if (!isAuthenticated) {
     return (
@@ -44,7 +51,7 @@ export const OptionalAuthHeader = ({ onUpgradeClick }: OptionalAuthHeaderProps) 
       <Button
         variant="ghost"
         size="sm"
-        onClick={signOut}
+        onClick={handleSignOut}
         className="gap-2"
       >
         <LogOut className="h-4 w-4" />
