@@ -47,19 +47,6 @@ All colors MUST be HSL.
     --shadow-glow: 0 0 40px hsl(263 70% 65% / 0.15);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-  /* Gradient animation utilities */
-  .bg-size-200 {
-    background-size: 200%;
-  }
-  
-  .bg-pos-0 {
-    background-position: 0%;
-  }
-  
-  .bg-pos-100 {
-    background-position: 100%;
-  }
 }
 
 @layer base {

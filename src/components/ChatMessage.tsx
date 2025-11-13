@@ -1,71 +1,26 @@
-import { useState } from 'react';
 import ResponseView from './ResponseView';
-import { Message } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Copy, Check } from 'lucide-react';
-import { toast } from 'sonner';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+
+export interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  expression?: string;
+  result?: string;
+  steps?: string;
+  imageUrl?: string;
+}
 
 export const ChatMessage = ({ message }: { message: Message }) => {
   const isUser = message.role === 'user';
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      // Extract plain text from the message
-      let textToCopy = message.content;
-      
-      if (message.expression) {
-        textToCopy += `\n\nExpression: ${message.expression}`;
-      }
-      if (message.result) {
-        textToCopy += `\n\nResult: ${message.result}`;
-      }
-      if (message.steps) {
-        textToCopy += `\n\nSteps: ${message.steps}`;
-      }
-      
-      await navigator.clipboard.writeText(textToCopy);
-      setCopied(true);
-      toast.success('Copied ✅');
-      
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      toast.error('Failed to copy');
-    }
-  };
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
       <div
-        className={`relative w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
+        className={`w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
           isUser
             ? 'bg-[#2f2f2f] text-white'
             : 'bg-[#2f2f2f] text-white'
         }`}
       >
-        {/* Copy button for assistant messages */}
-        {!isUser && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCopy}
-                className="absolute top-2 right-2 h-8 w-8 opacity-50 hover:opacity-100 transition-opacity"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{copied ? 'Copied!' : 'Copy solution'}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
         {message.imageUrl && (
           <img 
             src={message.imageUrl} 
