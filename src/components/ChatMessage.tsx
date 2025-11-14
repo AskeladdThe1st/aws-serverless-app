@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import ResponseView from './ResponseView';
+import { useToast } from '@/hooks/use-toast';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -11,16 +14,52 @@ export interface Message {
 
 export const ChatMessage = ({ message }: { message: Message }) => {
   const isUser = message.role === 'user';
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  const handleCopy = () => {
+    // Combine all solution parts
+    const solutionText = [
+      message.content,
+      message.expression && `Expression: ${message.expression}`,
+      message.result && `Result: ${message.result}`,
+      message.steps && `Steps:\n${message.steps}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    navigator.clipboard.writeText(solutionText);
+    setCopied(true);
+    toast({
+      title: 'Copied!',
+      description: 'Solution copied to clipboard',
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
       <div
-        className={`w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
+        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
           isUser
             ? 'bg-[#2f2f2f] text-white'
             : 'bg-[#2f2f2f] text-white'
         }`}
       >
+        {/* Copy Button - Only show for assistant messages with solutions */}
+        {!isUser && (message.result || message.steps) && (
+          <button
+            onClick={handleCopy}
+            className="absolute top-3 right-3 p-2 rounded-lg bg-[#1a1a1a] hover:bg-[#2a2a2a] opacity-0 group-hover:opacity-100 transition-all"
+            aria-label="Copy solution"
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Copy className="h-4 w-4 text-gray-400" />
+            )}
+          </button>
+        )}
         {message.imageUrl && (
           <img 
             src={message.imageUrl} 
