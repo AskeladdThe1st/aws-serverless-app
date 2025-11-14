@@ -55,13 +55,13 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static top-0 left-0 h-screen bg-card border-r border-border flex flex-col transition-all duration-300 z-40 flex-shrink-0",
+          "fixed lg:static top-0 left-0 h-screen bg-sidebar-bg border-r border-sidebar-border flex flex-col transition-all duration-300 z-40 flex-shrink-0",
           isCollapsed ? "w-16" : "w-64",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Header with Toggle */}
-        <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+        <div className="p-4 border-b border-sidebar-border flex items-center justify-between gap-2">
           {!isCollapsed ? (
             <>
               <Button
@@ -126,7 +126,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
         {/* Chat History */}
         <div className="flex-1 overflow-hidden">
           {!isCollapsed && (
-            <div className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <div className="px-4 py-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
               Chat History
             </div>
           )}
@@ -145,16 +145,16 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                         onMouseLeave={() => setHoveredChat(null)}
                         className={cn(
                           "group relative flex items-center gap-2 mb-1 rounded-lg cursor-pointer transition-all",
-                          "hover:bg-muted/50",
-                          activeChat === chat.id ? "bg-muted" : "bg-transparent",
+                          "hover:bg-sidebar-hover",
+                          activeChat === chat.id ? "bg-sidebar-hover" : "bg-transparent",
                           isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
                         )}
                       >
-                        <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
+                        <MessageSquare className={cn("h-4 w-4 text-muted-foreground/70 flex-shrink-0", isCollapsed && "h-5 w-5")} />
                         
                         {!isCollapsed && (
                           <>
-                            <span className="flex-1 text-sm text-foreground truncate min-w-0">
+                            <span className="flex-1 text-sm text-foreground/90 truncate min-w-0 overflow-hidden">
                               {chat.title}
                             </span>
                             
@@ -167,14 +167,14 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                               )}
                               aria-label="Delete chat"
                             >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive transition-colors" />
+                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-destructive transition-colors" />
                             </button>
                           </>
                         )}
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="max-w-xs">
-                      <p className="text-xs">{chat.title}</p>
+                      <p className="text-xs break-words">{chat.title}</p>
                     </TooltipContent>
                   </Tooltip>
                 ))}
