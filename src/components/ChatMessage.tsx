@@ -40,23 +40,23 @@ export const ChatMessage = ({ message }: { message: Message }) => {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
       <div
-        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 ${
+        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 break-words overflow-hidden ${
           isUser
-            ? 'bg-[#2f2f2f] text-white'
-            : 'bg-[#2f2f2f] text-white'
+            ? 'bg-muted text-foreground'
+            : 'bg-muted text-foreground'
         }`}
       >
         {/* Copy Button - Only show for assistant messages with solutions */}
         {!isUser && (message.result || message.steps) && (
           <button
             onClick={handleCopy}
-            className="absolute top-3 right-3 p-2 rounded-lg bg-[#1a1a1a] hover:bg-[#2a2a2a] opacity-0 group-hover:opacity-100 transition-all"
+            className="absolute top-3 right-3 p-2 rounded-lg bg-background hover:bg-background/80 opacity-0 group-hover:opacity-100 transition-all"
             aria-label="Copy solution"
           >
             {copied ? (
               <Check className="h-4 w-4 text-emerald-400" />
             ) : (
-              <Copy className="h-4 w-4 text-gray-400" />
+              <Copy className="h-4 w-4 text-muted-foreground" />
             )}
           </button>
         )}
@@ -64,24 +64,26 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-w-full rounded-lg mb-3 border border-[#444]"
+            className="max-w-full rounded-lg mb-3 border border-border"
           />
         )}
         
-        <ResponseView content={message.content} />
+        <div className="break-words overflow-hidden">
+          <ResponseView content={message.content} />
+        </div>
 
         {isUser && message.expression && (
-          <div className="mt-4 pt-4 border-t border-[#444]">
-            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Expression:</div>
-            <div className="font-mono text-sm bg-[#1a1a1a] rounded p-2 mb-3">
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="text-xs font-semibold mb-2 text-muted-foreground">Expression:</div>
+            <div className="font-mono text-sm bg-background rounded p-2 mb-3 break-words overflow-x-auto">
               <ResponseView content={`$$${message.expression}$$`} />
             </div>
           </div>
         )}
 
         {message.result && (
-          <div className="mt-3">
-            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Result:</div>
+          <div className="mt-3 break-words">
+            <div className="text-xs font-semibold mb-2 text-muted-foreground">Result:</div>
             <div className="text-base font-semibold">
               <ResponseView content={message.result} />
             </div>
@@ -89,8 +91,8 @@ export const ChatMessage = ({ message }: { message: Message }) => {
         )}
 
         {message.steps && (
-          <div className="mt-3">
-            <div className="text-xs font-semibold mb-2 text-[#8e8e8e]">Step-by-step solution:</div>
+          <div className="mt-3 break-words">
+            <div className="text-xs font-semibold mb-2 text-muted-foreground">Step-by-step solution:</div>
             <ResponseView content={message.steps} />
           </div>
         )}
