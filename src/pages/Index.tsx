@@ -229,7 +229,7 @@ const Index = () => {
       {/* Main Content */}
       <div className="flex flex-col flex-1 h-screen overflow-hidden">
         {/* Header */}
-        <header className="border-b border-[#2f2f2f] bg-[#212121] px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 flex-shrink-0 lg:ml-0 ml-12">
+        <header className="border-b border-[#2f2f2f] bg-[#212121] px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 flex-shrink-0 ml-12 lg:ml-0">
         <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
           <Calculator className="h-6 w-6 text-white" />
         </div>
