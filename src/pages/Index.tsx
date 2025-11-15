@@ -3,7 +3,7 @@ import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat } from '@/lib/lambda';
+import { solveProblem, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
 
 interface ChatSession {
@@ -168,6 +168,29 @@ const Index = () => {
     }
   };
 
+  const renameChatSession = async (chatId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    
+    try {
+      await updateChatTitle(chatId, newTitle);
+      setChatSessions(prev =>
+        prev.map(chat =>
+          chat.id === chatId ? { ...chat, title: newTitle } : chat
+        )
+      );
+      toast({
+        title: 'Chat renamed',
+      });
+    } catch (error) {
+      console.error('Error renaming chat:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to rename chat.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleSend = async (text: string, image?: File) => {
     if ((!text.trim() && !image) || isLoading) return;
 
@@ -261,6 +284,7 @@ const Index = () => {
         onNewChat={createNewChat}
         onSelectChat={selectChat}
         onDeleteChat={deleteChatSession}
+        onRenameChat={renameChatSession}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
