@@ -38,12 +38,12 @@ export const ChatMessage = ({ message }: { message: Message }) => {
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
       <div
-        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[75%] rounded-2xl px-6 py-4 break-words overflow-hidden ${
+        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[80%] rounded-2xl px-6 py-4 break-words overflow-hidden ${
           isUser
-            ? 'bg-muted text-foreground'
-            : 'bg-muted text-foreground'
+            ? 'bg-primary/10 text-foreground border border-primary/20'
+            : 'bg-card text-foreground border border-border shadow-sm'
         }`}
       >
         {/* Copy Button - Only show for assistant messages with solutions */}
