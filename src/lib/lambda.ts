@@ -64,6 +64,22 @@ export async function loadChat(sessionId: string): Promise<ChatSession> {
   return await response.json();
 }
 
+// Update chat title
+export async function updateChatTitle(sessionId: string, title: string): Promise<void> {
+  const response = await fetch(LAMBDA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'update',
+      session_id: sessionId,
+      user_id: USER_ID,
+      title
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Update chat error: ${response.status}`);
+}
+
 // Delete chat session
 export async function deleteChat(sessionId: string): Promise<void> {
   const response = await fetch(LAMBDA_URL, {
