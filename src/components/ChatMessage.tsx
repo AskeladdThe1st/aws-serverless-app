@@ -42,7 +42,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
       <div
         className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[80%] rounded-2xl px-6 py-4 break-words overflow-hidden ${
           isUser
-            ? 'bg-primary/10 text-foreground border border-primary/20'
+            ? 'bg-secondary text-foreground border border-border'
             : 'bg-card text-foreground border border-border shadow-sm'
         }`}
       >

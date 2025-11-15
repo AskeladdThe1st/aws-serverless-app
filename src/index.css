@@ -8,46 +8,46 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* MathGPT-inspired dark theme */
-    --background: 0 0% 5%;
-    --foreground: 0 0% 100%;
+    /* MathGPT-inspired color scheme */
+    --background: 217 13% 6%;
+    --foreground: 210 11% 91%;
 
-    --card: 0 0% 11%;
-    --card-foreground: 0 0% 100%;
+    --card: 220 13% 8%;
+    --card-foreground: 210 11% 91%;
 
-    --popover: 0 0% 11%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 220 13% 8%;
+    --popover-foreground: 210 11% 91%;
 
-    --primary: 210 100% 58%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 16%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 220 13% 10%;
+    --secondary-foreground: 210 11% 91%;
 
-    --muted: 0 0% 16%;
-    --muted-foreground: 0 0% 67%;
+    --muted: 220 9% 46%;
+    --muted-foreground: 220 9% 61%;
 
-    --accent: 210 100% 58%;
+    --accent: 217 91% 60%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 63% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 18%;
-    --ring: 210 100% 58%;
+    --border: 220 13% 12%;
+    --input: 220 13% 9%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
-    --chat-bubble-user: 210 100% 58%;
-    --chat-bubble-assistant: 0 0% 16%;
+    --chat-bubble-user: 220 13% 10%;
+    --chat-bubble-assistant: 220 13% 8%;
     
-    --sidebar-bg: 0 0% 11%;
-    --sidebar-border: 0 0% 18%;
-    --sidebar-hover: 0 0% 16%;
+    --sidebar-bg: 220 13% 6%;
+    --sidebar-border: 220 13% 12%;
+    --sidebar-hover: 220 13% 10%;
     
-    --gradient-primary: linear-gradient(135deg, hsl(210 100% 58%) 0%, hsl(210 100% 65%) 100%);
-    --shadow-glow: 0 0 40px hsl(210 100% 58% / 0.15);
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(217 91% 65%) 100%);
+    --shadow-glow: 0 0 40px hsl(217 91% 60% / 0.15);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
