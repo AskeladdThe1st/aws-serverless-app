@@ -56,7 +56,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
       <aside
         className={cn(
           "fixed lg:static top-0 left-0 h-screen bg-sidebar-bg border-r border-sidebar-border flex flex-col transition-all duration-300 z-40 flex-shrink-0",
-          isCollapsed ? "w-16" : "w-64",
+          isCollapsed ? "w-16" : "w-[280px]",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
@@ -69,7 +69,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                   onNewChat();
                   setIsOpen(false);
                 }}
-                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium"
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 New Chat
@@ -94,7 +94,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                         setIsOpen(false);
                       }}
                       size="icon"
-                      className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                       <Plus className="h-5 w-5" />
                     </Button>
@@ -150,24 +150,24 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
                         )}
                       >
-                        <MessageSquare className={cn("h-4 w-4 text-muted-foreground/70 flex-shrink-0", isCollapsed && "h-5 w-5")} />
+                        <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
                         
                         {!isCollapsed && (
                           <>
-                            <span className="flex-1 text-sm text-foreground/90 truncate min-w-0 overflow-hidden">
+                            <span className="flex-1 text-sm text-foreground truncate overflow-hidden whitespace-nowrap">
                               {chat.title}
                             </span>
                             
-                            {/* Delete Icon - Shows on hover */}
+                            {/* Delete Icon - Always rendered, visible on hover */}
                             <button
                               onClick={(e) => handleDeleteClick(e, chat.id)}
                               className={cn(
-                                "flex-shrink-0 p-1.5 hover:bg-destructive/20 rounded transition-all ml-1",
+                                "flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all",
                                 hoveredChat === chat.id ? "opacity-100" : "opacity-0"
                               )}
                               aria-label="Delete chat"
                             >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-destructive transition-colors" />
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
                             </button>
                           </>
                         )}

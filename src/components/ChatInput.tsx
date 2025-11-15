@@ -59,16 +59,16 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   };
 
   return (
-    <div className="bg-[#212121] border-t border-[#2f2f2f] p-4">
+    <div className="bg-card border-t border-border p-4 md:p-6">
       {previewUrl && (
-        <div className="mb-3 max-w-3xl mx-auto relative inline-block">
+        <div className="mb-3 max-w-4xl mx-auto relative inline-block">
           <img
             src={previewUrl}
             alt="Preview"
-            className="max-h-32 rounded-lg border border-[#444]"
+            className="max-h-32 rounded-xl border border-border"
           />
           <button
-            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-lg font-semibold"
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center text-lg font-semibold"
             onClick={clearImage}
           >
             ×
@@ -76,7 +76,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <input
           ref={fileInputRef}
           type="file"
@@ -94,14 +94,14 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           onChange={handleFileChange}
         />
 
-        <div className="flex items-center gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-3 border border-[#444]">
+        <div className="flex items-center gap-3 bg-input rounded-xl px-5 py-4 border border-border focus-within:border-primary transition-colors">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="Message Calculus Agent"
-            className="flex-1 bg-transparent border-0 outline-none text-white placeholder:text-[#8e8e8e] disabled:opacity-50 text-[15px]"
+            className="flex-1 bg-transparent border-0 outline-none text-foreground placeholder:text-muted-foreground disabled:opacity-50 text-base"
             disabled={disabled}
           />
 
@@ -109,7 +109,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
             type="button"
             onClick={() => cameraInputRef.current?.click()}
             disabled={disabled}
-            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1 md:hidden"
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1 md:hidden"
             aria-label="Take photo"
           >
             <Camera className="h-5 w-5" />
@@ -119,7 +119,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className="text-[#8e8e8e] hover:text-white transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
             aria-label="Attach file"
           >
             <Paperclip className="h-5 w-5" />
@@ -128,10 +128,10 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           <button
             onClick={handleSubmit}
             disabled={disabled || (!input.trim() && !selectedImage)}
-            className="shrink-0 h-8 w-8 rounded-full bg-white hover:bg-gray-200 disabled:bg-[#676767] disabled:opacity-50 flex items-center justify-center transition-colors"
+            className="shrink-0 h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-colors"
             aria-label="Send message"
           >
-            <Send className="h-4 w-4 text-black" />
+            <Send className="h-4 w-4" />
           </button>
         </div>
       </div>
