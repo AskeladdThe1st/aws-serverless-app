@@ -44,7 +44,23 @@ const Index = () => {
             createdAt: s.created_at
           }));
           setChatSessions(formattedSessions);
-          setActiveChatId(formattedSessions[0].id);
+          
+          // Restore last active chat from localStorage or use first chat
+          const savedChatId = localStorage.getItem('lastActiveChatId');
+          const chatToActivate = savedChatId && formattedSessions.find(s => s.id === savedChatId)
+            ? savedChatId
+            : formattedSessions[0].id;
+          setActiveChatId(chatToActivate);
+          
+          // Load messages for the active chat
+          if (chatToActivate) {
+            const chatData = await loadChat(chatToActivate);
+            setChatSessions(prev => prev.map(c => 
+              c.id === chatToActivate 
+                ? { ...c, messages: chatData.messages || c.messages }
+                : c
+            ));
+          }
         }
       } catch (error) {
         console.error('Error loading chats:', error);
@@ -136,6 +152,8 @@ const Index = () => {
   const selectChat = async (chatId: string) => {
     try {
       setActiveChatId(chatId);
+      localStorage.setItem('lastActiveChatId', chatId);
+      
       const existingChat = chatSessions.find(c => c.id === chatId);
       if (!existingChat || existingChat.messages.length <= 1) {
         const chatData = await loadChat(chatId);
@@ -175,24 +193,19 @@ const Index = () => {
         imageBase64 = await fileToBase64(image);
       }
 
-      const response = await solveProblem(activeChatId, text, imageBase64);
+      await solveProblem(activeChatId, text, imageBase64);
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: response.steps || 'Here is the solution:',
-        expression: response.expression,
-        result: response.result,
-        steps: response.steps,
-      };
-
+      // Reload messages from DynamoDB to prevent duplicates
+      const chatData = await loadChat(activeChatId);
       setChatSessions(prev =>
         prev.map(chat =>
           chat.id === activeChatId
-            ? { ...chat, messages: [...chat.messages, assistantMessage] }
+            ? { ...chat, messages: chatData.messages || chat.messages }
             : chat
         )
       );
 
+      // Update title if it's a new chat
       if (activeChat && activeChat.messages.length === 1) {
         const title = text.slice(0, 40) + (text.length > 40 ? '...' : '');
         setChatSessions(prev =>

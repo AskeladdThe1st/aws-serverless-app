@@ -22,7 +22,6 @@ interface ChatSidebarProps {
 export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [hoveredChat, setHoveredChat] = useState<string | null>(null);
 
   const handleDeleteClick = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
@@ -141,8 +140,6 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           onSelectChat(chat.id);
                           setIsOpen(false);
                         }}
-                        onMouseEnter={() => setHoveredChat(chat.id)}
-                        onMouseLeave={() => setHoveredChat(null)}
                         className={cn(
                           "group relative flex items-center gap-2 mb-1 rounded-lg cursor-pointer transition-all",
                           "hover:bg-sidebar-hover",
@@ -161,10 +158,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             {/* Delete Icon - Always rendered, visible on hover */}
                             <button
                               onClick={(e) => handleDeleteClick(e, chat.id)}
-                              className={cn(
-                                "flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all",
-                                hoveredChat === chat.id ? "opacity-100" : "opacity-0"
-                              )}
+                              className="flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all opacity-0 group-hover:opacity-100"
                               aria-label="Delete chat"
                             >
                               <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
