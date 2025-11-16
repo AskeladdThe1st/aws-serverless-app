@@ -26,43 +26,31 @@ const Index = () => {
 
   // Load chats from backend on mount
   useEffect(() => {
-    const loadChatsFromBackend = async () => {
+    const init = async () => {
       try {
         setIsFetchingChats(true);
         const userId = getOrCreateUserId();
         const sessions = await listChats(userId);
-        
-        if (sessions.length === 0) {
-          await createNewChat();
+
+        const formattedSessions: ChatSession[] = sessions.map(s => ({
+          id: s.session_id,
+          title: s.title,
+          messages: s.messages || [],
+          createdAt: s.created_at
+        }));
+        setChatSessions(formattedSessions);
+
+        const savedSessionId = localStorage.getItem('cgpt_session_id');
+        if (savedSessionId) {
+          setActiveChatId(savedSessionId);
+          const chatData = await loadChat(savedSessionId, userId);
+          setChatSessions(prev => prev.map(c =>
+            c.id === savedSessionId
+              ? { ...c, messages: chatData.messages || [] }
+              : c
+          ));
         } else {
-          const formattedSessions: ChatSession[] = sessions.map(s => ({
-            id: s.session_id,
-            title: s.title,
-            messages: s.messages || [{
-              role: 'assistant' as const,
-              content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
-            }],
-            createdAt: s.created_at
-          }));
-          setChatSessions(formattedSessions);
-          
-          // Restore last active chat from current_session or use first chat
-          const savedSessionId = localStorage.getItem('current_session');
-          const chatToActivate = savedSessionId && formattedSessions.find(s => s.id === savedSessionId)
-            ? savedSessionId
-            : formattedSessions[0].id;
-          setActiveChatId(chatToActivate);
-          localStorage.setItem('current_session', chatToActivate);
-          
-          // Load messages for the active chat
-          if (chatToActivate) {
-            const chatData = await loadChat(chatToActivate, userId);
-            setChatSessions(prev => prev.map(c => 
-              c.id === chatToActivate 
-                ? { ...c, messages: chatData.messages || c.messages }
-                : c
-            ));
-          }
+          await createNewChat();
         }
       } catch (error) {
         console.error('Error loading chats:', error);
@@ -76,7 +64,7 @@ const Index = () => {
       }
     };
 
-    loadChatsFromBackend();
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -102,25 +90,30 @@ const Index = () => {
     try {
       const userId = getOrCreateUserId();
       const sessionId = crypto.randomUUID();
-      
+
       await createChat(sessionId, userId, 'New Chat');
-      
-      localStorage.setItem('current_session', sessionId);
+
+      localStorage.setItem('cgpt_session_id', sessionId);
       setActiveChatId(sessionId);
-      
+
       // Reload sidebar from backend
       const sessions = await listChats(userId);
       const formattedSessions: ChatSession[] = sessions.map(s => ({
         id: s.session_id,
         title: s.title,
-        messages: s.messages || [{
-          role: 'assistant' as const,
-          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
-        }],
+        messages: s.messages || [],
         createdAt: s.created_at
       }));
       setChatSessions(formattedSessions);
-      
+
+      // Load messages for the new chat from backend (source of truth)
+      const chatData = await loadChat(sessionId, userId);
+      setChatSessions(prev => prev.map(c =>
+        c.id === sessionId
+          ? { ...c, messages: chatData.messages || [] }
+          : c
+      ));
+
       toast({
         title: 'Chat created',
       });
@@ -143,10 +136,7 @@ const Index = () => {
       const formattedSessions: ChatSession[] = sessions.map(s => ({
         id: s.session_id,
         title: s.title,
-        messages: s.messages || [{
-          role: 'assistant' as const,
-          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
-        }],
+        messages: s.messages || [],
         createdAt: s.created_at
       }));
       
@@ -156,7 +146,7 @@ const Index = () => {
         if (formattedSessions.length > 0) {
           const newActiveId = formattedSessions[0].id;
           setActiveChatId(newActiveId);
-          localStorage.setItem('current_session', newActiveId);
+          localStorage.setItem('cgpt_session_id', newActiveId);
         } else {
           await createNewChat();
         }
@@ -179,7 +169,7 @@ const Index = () => {
       const userId = getOrCreateUserId();
       
       setActiveChatId(chatId);
-      localStorage.setItem('current_session', chatId);
+      localStorage.setItem('cgpt_session_id', chatId);
       
       // Always load from backend
       const chatData = await loadChat(chatId, userId);
@@ -205,10 +195,7 @@ const Index = () => {
       const formattedSessions: ChatSession[] = sessions.map(s => ({
         id: s.session_id,
         title: s.title,
-        messages: s.messages || [{
-          role: 'assistant' as const,
-          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
-        }],
+        messages: s.messages || [],
         createdAt: s.created_at
       }));
       setChatSessions(formattedSessions);
@@ -230,7 +217,22 @@ const Index = () => {
     if ((!text.trim() && !image) || isLoading) return;
 
     const userId = getOrCreateUserId();
-    const sessionId = localStorage.getItem('current_session') || activeChatId;
+    const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
+    if (!userId || !sessionId) return;
+
+    // Optimistically show user message immediately
+    const userMessage: Message = {
+      role: 'user',
+      content: text || 'Analyzing image...',
+      imageUrl: image ? URL.createObjectURL(image) : undefined,
+    };
+    setChatSessions(prev =>
+      prev.map(chat =>
+        chat.id === sessionId
+          ? { ...chat, messages: [...chat.messages, userMessage] }
+          : chat
+      )
+    );
 
     setIsLoading(true);
 
