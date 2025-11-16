@@ -32,7 +32,8 @@ const Index = () => {
         const userId = getOrCreateUserId();
         const sessions = await listChats(userId);
 
-        const formattedSessions: ChatSession[] = sessions.map(s => ({
+        const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
+        const formattedSessions: ChatSession[] = rawSessions.map(s => ({
           id: s.session_id,
           title: s.title,
           messages: s.messages || [],
@@ -98,7 +99,8 @@ const Index = () => {
 
       // Reload sidebar from backend
       const sessions = await listChats(userId);
-      const formattedSessions: ChatSession[] = sessions.map(s => ({
+      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
         title: s.title,
         messages: s.messages || [],
@@ -133,7 +135,8 @@ const Index = () => {
       
       // Reload chat history from backend
       const sessions = await listChats(userId);
-      const formattedSessions: ChatSession[] = sessions.map(s => ({
+      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
         title: s.title,
         messages: s.messages || [],
@@ -192,7 +195,8 @@ const Index = () => {
       
       // Reload from backend
       const sessions = await listChats(userId);
-      const formattedSessions: ChatSession[] = sessions.map(s => ({
+      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
         title: s.title,
         messages: s.messages || [],
@@ -242,7 +246,7 @@ const Index = () => {
         imageBase64 = await fileToBase64(image);
       }
 
-      await solveProblem(sessionId, userId, text, imageBase64);
+      await solveProblem(userId, sessionId, text, imageBase64);
 
       // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId);
