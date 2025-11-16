@@ -1,5 +1,15 @@
 const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
-const USER_ID = 'default-user'; // Replace with actual user ID from auth
+
+// Get or create user ID from localStorage
+export function getOrCreateUserId(): string {
+  const key = 'calculus_user_id';
+  let userId = localStorage.getItem(key);
+  if (!userId) {
+    userId = crypto.randomUUID();
+    localStorage.setItem(key, userId);
+  }
+  return userId;
+}
 
 export interface CalcResponse {
   expression: string;
@@ -15,15 +25,14 @@ export interface ChatSession {
 }
 
 // Create new chat session
-export async function createChat(title: string = 'New Chat'): Promise<ChatSession> {
-  const session_id = Date.now().toString();
+export async function createChat(sessionId: string, userId: string, title: string = 'New Chat'): Promise<ChatSession> {
   const response = await fetch(LAMBDA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'create',
-      session_id,
-      user_id: USER_ID,
+      session_id: sessionId,
+      user_id: userId,
       title
     }),
   });
@@ -33,13 +42,13 @@ export async function createChat(title: string = 'New Chat'): Promise<ChatSessio
 }
 
 // List all chat sessions
-export async function listChats(): Promise<ChatSession[]> {
+export async function listChats(userId: string): Promise<ChatSession[]> {
   const response = await fetch(LAMBDA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'list',
-      user_id: USER_ID
+      user_id: userId
     }),
   });
 
@@ -49,14 +58,14 @@ export async function listChats(): Promise<ChatSession[]> {
 }
 
 // Load specific chat session
-export async function loadChat(sessionId: string): Promise<ChatSession> {
+export async function loadChat(sessionId: string, userId: string): Promise<ChatSession> {
   const response = await fetch(LAMBDA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'load',
       session_id: sessionId,
-      user_id: USER_ID
+      user_id: userId
     }),
   });
 
@@ -65,14 +74,14 @@ export async function loadChat(sessionId: string): Promise<ChatSession> {
 }
 
 // Update chat title
-export async function updateChatTitle(sessionId: string, title: string): Promise<void> {
+export async function updateChatTitle(sessionId: string, userId: string, title: string): Promise<void> {
   const response = await fetch(LAMBDA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'update',
       session_id: sessionId,
-      user_id: USER_ID,
+      user_id: userId,
       title
     }),
   });
@@ -81,14 +90,14 @@ export async function updateChatTitle(sessionId: string, title: string): Promise
 }
 
 // Delete chat session
-export async function deleteChat(sessionId: string): Promise<void> {
+export async function deleteChat(sessionId: string, userId: string): Promise<void> {
   const response = await fetch(LAMBDA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'delete',
       session_id: sessionId,
-      user_id: USER_ID
+      user_id: userId
     }),
   });
 
@@ -98,6 +107,7 @@ export async function deleteChat(sessionId: string): Promise<void> {
 // Solve problem and save to session
 export async function solveProblem(
   sessionId: string,
+  userId: string,
   text: string,
   imageBase64?: string
 ): Promise<CalcResponse> {
@@ -107,7 +117,7 @@ export async function solveProblem(
     body: JSON.stringify({
       action: 'solve',
       session_id: sessionId,
-      user_id: USER_ID,
+      user_id: userId,
       text,
       image: imageBase64
     }),
