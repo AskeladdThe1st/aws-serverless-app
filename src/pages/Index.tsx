@@ -3,7 +3,7 @@ import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle } from '@/lib/lambda';
+import { solveProblem, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle, getOrCreateUserId } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
 
 interface ChatSession {
@@ -29,7 +29,8 @@ const Index = () => {
     const loadChatsFromBackend = async () => {
       try {
         setIsFetchingChats(true);
-        const sessions = await listChats();
+        const userId = getOrCreateUserId();
+        const sessions = await listChats(userId);
         
         if (sessions.length === 0) {
           await createNewChat();
@@ -45,16 +46,17 @@ const Index = () => {
           }));
           setChatSessions(formattedSessions);
           
-          // Restore last active chat from localStorage or use first chat
-          const savedChatId = localStorage.getItem('lastActiveChatId');
-          const chatToActivate = savedChatId && formattedSessions.find(s => s.id === savedChatId)
-            ? savedChatId
+          // Restore last active chat from current_session or use first chat
+          const savedSessionId = localStorage.getItem('current_session');
+          const chatToActivate = savedSessionId && formattedSessions.find(s => s.id === savedSessionId)
+            ? savedSessionId
             : formattedSessions[0].id;
           setActiveChatId(chatToActivate);
+          localStorage.setItem('current_session', chatToActivate);
           
           // Load messages for the active chat
           if (chatToActivate) {
-            const chatData = await loadChat(chatToActivate);
+            const chatData = await loadChat(chatToActivate, userId);
             setChatSessions(prev => prev.map(c => 
               c.id === chatToActivate 
                 ? { ...c, messages: chatData.messages || c.messages }
@@ -98,20 +100,27 @@ const Index = () => {
 
   const createNewChat = async () => {
     try {
-      const newChatData = await createChat('New Chat');
-      const newChat: ChatSession = {
-        id: newChatData.session_id,
-        title: newChatData.title,
-        messages: [
-          {
-            role: 'assistant',
-            content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
-          },
-        ],
-        createdAt: newChatData.created_at,
-      };
-      setChatSessions(prev => [newChat, ...prev]);
-      setActiveChatId(newChat.id);
+      const userId = getOrCreateUserId();
+      const sessionId = crypto.randomUUID();
+      
+      await createChat(sessionId, userId, 'New Chat');
+      
+      localStorage.setItem('current_session', sessionId);
+      setActiveChatId(sessionId);
+      
+      // Reload sidebar from backend
+      const sessions = await listChats(userId);
+      const formattedSessions: ChatSession[] = sessions.map(s => ({
+        id: s.session_id,
+        title: s.title,
+        messages: s.messages || [{
+          role: 'assistant' as const,
+          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
+        }],
+        createdAt: s.created_at
+      }));
+      setChatSessions(formattedSessions);
+      
       toast({
         title: 'Chat created',
       });
@@ -126,17 +135,33 @@ const Index = () => {
 
   const deleteChatSession = async (chatId: string) => {
     try {
-      await deleteSessionChat(chatId);
-      setChatSessions(prev => {
-        const filtered = prev.filter(chat => chat.id !== chatId);
-        if (chatId === activeChatId && filtered.length > 0) {
-          setActiveChatId(filtered[0].id);
+      const userId = getOrCreateUserId();
+      await deleteSessionChat(chatId, userId);
+      
+      // Reload chat history from backend
+      const sessions = await listChats(userId);
+      const formattedSessions: ChatSession[] = sessions.map(s => ({
+        id: s.session_id,
+        title: s.title,
+        messages: s.messages || [{
+          role: 'assistant' as const,
+          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
+        }],
+        createdAt: s.created_at
+      }));
+      
+      setChatSessions(formattedSessions);
+      
+      if (chatId === activeChatId) {
+        if (formattedSessions.length > 0) {
+          const newActiveId = formattedSessions[0].id;
+          setActiveChatId(newActiveId);
+          localStorage.setItem('current_session', newActiveId);
+        } else {
+          await createNewChat();
         }
-        if (filtered.length === 0) {
-          createNewChat();
-        }
-        return filtered;
-      });
+      }
+      
       toast({
         title: 'Chat deleted',
       });
@@ -151,18 +176,18 @@ const Index = () => {
 
   const selectChat = async (chatId: string) => {
     try {
-      setActiveChatId(chatId);
-      localStorage.setItem('lastActiveChatId', chatId);
+      const userId = getOrCreateUserId();
       
-      const existingChat = chatSessions.find(c => c.id === chatId);
-      if (!existingChat || existingChat.messages.length <= 1) {
-        const chatData = await loadChat(chatId);
-        setChatSessions(prev => prev.map(c => 
-          c.id === chatId 
-            ? { ...c, messages: chatData.messages || c.messages }
-            : c
-        ));
-      }
+      setActiveChatId(chatId);
+      localStorage.setItem('current_session', chatId);
+      
+      // Always load from backend
+      const chatData = await loadChat(chatId, userId);
+      setChatSessions(prev => prev.map(c => 
+        c.id === chatId 
+          ? { ...c, messages: chatData.messages || c.messages }
+          : c
+      ));
     } catch (error) {
       console.error('Error loading chat:', error);
     }
@@ -172,12 +197,22 @@ const Index = () => {
     if (!newTitle.trim()) return;
     
     try {
-      await updateChatTitle(chatId, newTitle);
-      setChatSessions(prev =>
-        prev.map(chat =>
-          chat.id === chatId ? { ...chat, title: newTitle } : chat
-        )
-      );
+      const userId = getOrCreateUserId();
+      await updateChatTitle(chatId, userId, newTitle);
+      
+      // Reload from backend
+      const sessions = await listChats(userId);
+      const formattedSessions: ChatSession[] = sessions.map(s => ({
+        id: s.session_id,
+        title: s.title,
+        messages: s.messages || [{
+          role: 'assistant' as const,
+          content: 'Hello! I\'m your calculus assistant. I can help you solve calculus problems.',
+        }],
+        createdAt: s.created_at
+      }));
+      setChatSessions(formattedSessions);
+      
       toast({
         title: 'Chat renamed',
       });
@@ -194,15 +229,19 @@ const Index = () => {
   const handleSend = async (text: string, image?: File) => {
     if ((!text.trim() && !image) || isLoading) return;
 
+    const userId = getOrCreateUserId();
+    const sessionId = localStorage.getItem('current_session') || activeChatId;
+
     const userMessage: Message = {
       role: 'user',
       content: text || 'Analyzing image...',
       imageUrl: image ? URL.createObjectURL(image) : undefined,
     };
 
+    // Optimistically add user message
     setChatSessions(prev =>
       prev.map(chat =>
-        chat.id === activeChatId
+        chat.id === sessionId
           ? { ...chat, messages: [...chat.messages, userMessage] }
           : chat
       )
@@ -216,29 +255,17 @@ const Index = () => {
         imageBase64 = await fileToBase64(image);
       }
 
-      await solveProblem(activeChatId, text, imageBase64);
+      await solveProblem(sessionId, userId, text, imageBase64);
 
-      // Reload messages from DynamoDB to prevent duplicates
-      const chatData = await loadChat(activeChatId);
+      // Reload messages from DynamoDB - this prevents duplicates
+      const chatData = await loadChat(sessionId, userId);
       setChatSessions(prev =>
         prev.map(chat =>
-          chat.id === activeChatId
+          chat.id === sessionId
             ? { ...chat, messages: chatData.messages || chat.messages }
             : chat
         )
       );
-
-      // Update title if it's a new chat
-      if (activeChat && activeChat.messages.length === 1) {
-        const title = text.slice(0, 40) + (text.length > 40 ? '...' : '');
-        setChatSessions(prev =>
-          prev.map(chat =>
-            chat.id === activeChatId && chat.title === 'New Chat'
-              ? { ...chat, title }
-              : chat
-          )
-        );
-      }
     } catch (error) {
       console.error('Error solving problem:', error);
       toast({
@@ -247,9 +274,10 @@ const Index = () => {
         variant: 'destructive',
       });
 
+      // Remove optimistic user message on error
       setChatSessions(prev =>
         prev.map(chat =>
-          chat.id === activeChatId
+          chat.id === sessionId
             ? { ...chat, messages: chat.messages.slice(0, -1) }
             : chat
         )
