@@ -190,7 +190,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 autoFocus
-                                className="flex-1 text-sm bg-sidebar-bg border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                                className="w-full bg-[#151719] border border-[#3b82f6] text-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#3b82f6]"
                               />
                             ) : (
                               <span
