@@ -232,21 +232,6 @@ const Index = () => {
     const userId = getOrCreateUserId();
     const sessionId = localStorage.getItem('current_session') || activeChatId;
 
-    const userMessage: Message = {
-      role: 'user',
-      content: text || 'Analyzing image...',
-      imageUrl: image ? URL.createObjectURL(image) : undefined,
-    };
-
-    // Optimistically add user message
-    setChatSessions(prev =>
-      prev.map(chat =>
-        chat.id === sessionId
-          ? { ...chat, messages: [...chat.messages, userMessage] }
-          : chat
-      )
-    );
-
     setIsLoading(true);
 
     try {
@@ -257,7 +242,7 @@ const Index = () => {
 
       await solveProblem(sessionId, userId, text, imageBase64);
 
-      // Reload messages from DynamoDB - this prevents duplicates
+      // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId);
       setChatSessions(prev =>
         prev.map(chat =>
@@ -270,18 +255,9 @@ const Index = () => {
       console.error('Error solving problem:', error);
       toast({
         title: 'Error',
-        description: 'Failed to solve the problem.',
+        description: 'Failed to solve the problem. Please try again.',
         variant: 'destructive',
       });
-
-      // Remove optimistic user message on error
-      setChatSessions(prev =>
-        prev.map(chat =>
-          chat.id === sessionId
-            ? { ...chat, messages: chat.messages.slice(0, -1) }
-            : chat
-        )
-      );
     } finally {
       setIsLoading(false);
     }
