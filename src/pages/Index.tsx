@@ -3,7 +3,7 @@ import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle, getOrCreateUserId } from '@/lib/lambda';
+import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle, getOrCreateUserId } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
 
 interface ChatSession {
@@ -187,18 +187,27 @@ const Index = () => {
   };
 
   const generateChatTitle = (text: string, hasImage: boolean): string => {
-    if (!text.trim() && hasImage) {
+    if (hasImage) {
       return 'Graph Analysis';
     }
     
-    // Take first few words (3-6 words max)
-    const words = text.trim().split(/\s+/);
-    const titleWords = words.slice(0, 6);
+    if (!text.trim()) {
+      return 'New Chat';
+    }
+    
+    // Take first 6-10 words
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+    const titleWords = words.slice(0, Math.min(10, words.length));
     let title = titleWords.join(' ');
     
+    // Capitalize first letter
+    if (title.length > 0) {
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+    }
+    
     // Truncate if too long
-    if (title.length > 50) {
-      title = title.substring(0, 47) + '...';
+    if (title.length > 60) {
+      title = title.substring(0, 57) + '...';
     }
     
     return title || 'New Chat';
@@ -228,12 +237,15 @@ const Index = () => {
     setIsLoading(true);
 
     try {
-      let imageBase64: string | undefined;
+      // Route to correct backend action
       if (image) {
-        imageBase64 = await fileToBase64(image);
+        // ANY image upload -> use graph action
+        const imageBase64 = await fileToBase64(image);
+        await analyzeGraph(userId, sessionId, imageBase64, text);
+      } else {
+        // Text only -> use solve action
+        await solveProblem(userId, sessionId, text);
       }
-
-      await solveProblem(userId, sessionId, text, imageBase64);
 
       // Auto-name chat if this is the first message
       const currentChat = chatSessions.find(c => c.id === sessionId);
@@ -261,10 +273,10 @@ const Index = () => {
           : chat
       ));
     } catch (error) {
-      console.error('Error solving problem:', error);
+      console.error('Error processing request:', error);
       toast({
         title: 'Error',
-        description: 'Failed to solve the problem. Please try again.',
+        description: 'Failed to process your request. Please try again.',
         variant: 'destructive',
       });
     } finally {
