@@ -314,25 +314,39 @@ const Index = () => {
 
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-6 space-y-2"
+          className="flex-1 overflow-y-auto px-4 py-4"
         >
-          <div className="max-w-4xl mx-auto">
-            {messages.map((message, index) => (
-              <ChatMessage key={index} message={message} />
-            ))}
-            {isLoading && (
-              <div className="flex justify-start mb-4">
-                <div className="bg-card border border-border rounded-2xl px-6 py-4 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                    </div>
-                    <span className="text-sm text-muted-foreground">Solving...</span>
-                  </div>
+          <div className="max-w-3xl mx-auto">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-center">
+                <div className="space-y-3">
+                  <Calculator className="h-12 w-12 text-primary mx-auto opacity-50" />
+                  <h2 className="text-xl font-semibold text-foreground">How can I help with calculus today?</h2>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Send a message or upload a graph image to get started.
+                  </p>
                 </div>
               </div>
+            ) : (
+              <>
+                {messages.map((message, index) => (
+                  <ChatMessage key={index} message={message} />
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start mb-4">
+                    <div className="bg-card border border-border rounded-2xl px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        </div>
+                        <span className="text-sm text-muted-foreground">Solving...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
