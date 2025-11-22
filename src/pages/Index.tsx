@@ -20,6 +20,7 @@ const Index = () => {
   const [isFetchingChats, setIsFetchingChats] = useState(true);
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
@@ -171,6 +172,10 @@ const Index = () => {
     try {
       const userId = getOrCreateUserId();
       
+      // Clear any active request tracking when switching chats
+      activeRequestRef.current = null;
+      setIsLoading(false);
+      
       setActiveChatId(chatId);
       localStorage.setItem('cgpt_session_id', chatId);
       
@@ -220,6 +225,10 @@ const Index = () => {
     const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId || !sessionId) return;
 
+    // Generate unique request ID for tracking
+    const requestId = crypto.randomUUID();
+    activeRequestRef.current = { sessionId, requestId };
+
     // Optimistically show user message immediately
     const userMessage: Message = {
       role: 'user',
@@ -247,9 +256,16 @@ const Index = () => {
         await solveProblem(userId, sessionId, text);
       }
 
-      // Auto-name chat if this is the first message
+      // CRITICAL: Only proceed if still on the same chat
+      if (activeRequestRef.current?.sessionId !== sessionId || 
+          activeRequestRef.current?.requestId !== requestId) {
+        console.log('Response ignored - user switched chats');
+        return;
+      }
+
+      // Auto-name chat if this is the first message (only if title is still "New Chat")
       const currentChat = chatSessions.find(c => c.id === sessionId);
-      if (currentChat && (currentChat.title === 'New Chat' || !currentChat.title)) {
+      if (currentChat && currentChat.title === 'New Chat') {
         const autoTitle = generateChatTitle(text, !!image);
         await updateChatTitle(sessionId, userId, autoTitle);
       }
@@ -257,6 +273,13 @@ const Index = () => {
       // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId);
       
+      // CRITICAL: Check again before updating state
+      if (activeRequestRef.current?.sessionId !== sessionId || 
+          activeRequestRef.current?.requestId !== requestId) {
+        console.log('State update ignored - user switched chats');
+        return;
+      }
+
       // Also refresh sidebar to show updated title
       const sessions = await listChats(userId);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
@@ -274,13 +297,22 @@ const Index = () => {
       ));
     } catch (error) {
       console.error('Error processing request:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to process your request. Please try again.',
-        variant: 'destructive',
-      });
+      
+      // Only show error if still on the same chat
+      if (activeRequestRef.current?.sessionId === sessionId && 
+          activeRequestRef.current?.requestId === requestId) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to process your request. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
-      setIsLoading(false);
+      // Only clear loading if still on the same chat
+      if (activeRequestRef.current?.sessionId === sessionId && 
+          activeRequestRef.current?.requestId === requestId) {
+        setIsLoading(false);
+      }
     }
   };
 
