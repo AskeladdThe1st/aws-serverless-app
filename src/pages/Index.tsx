@@ -3,7 +3,7 @@ import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, updateChatTitle, getOrCreateUserId } from '@/lib/lambda';
+import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
 
 interface ChatSession {
@@ -322,19 +322,8 @@ const Index = () => {
         console.log('[AUTO-TITLE] Generated title:', autoTitle);
       }
 
-      // Update title if needed
-      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        console.log('[AUTO-TITLE] Calling updateChatTitle...');
-        await updateChatTitle(sessionId, userId, autoTitle);
-        console.log('[AUTO-TITLE] updateChatTitle completed');
-        
-        // CRITICAL: Check again after updateChatTitle
-        if (activeRequestRef.current?.sessionId !== sessionId || 
-            activeRequestRef.current?.requestId !== requestId) {
-          console.log('Title update ignored - user switched chats');
-          return;
-        }
-      }
+      // We no longer call any backend update action; title is managed in frontend state only
+      // (see formattedSessions mapping below).
 
       // Refresh sidebar to show updated title and all sessions
       console.log('[AUTO-TITLE] Fetching fresh chat list...');

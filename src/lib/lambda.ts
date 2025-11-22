@@ -83,14 +83,9 @@ export async function deleteChat(sessionId: string, userId: string) {
   });
 }
 
-export async function updateChatTitle(sessionId: string, userId: string, title: string) {
-  return callLambda({
-    action: "update",
-    user_id: userId,
-    session_id: sessionId,
-    title,
-  });
-}
+// NOTE: Title updates are handled purely on the frontend; there is no
+// supported backend "update" action in this app, so we do not export any
+// updateChatTitle helper that would call such an action.
 
 export async function solveProblem(
   userId: string,
