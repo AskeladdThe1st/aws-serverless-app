@@ -334,7 +334,7 @@ const Index = () => {
       console.log('[AUTO-TITLE] Fetching fresh chat list...');
       const sessions = await listChats(userId);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
+      let formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
         title: s.title,
         messages: s.messages || [],
@@ -345,22 +345,29 @@ const Index = () => {
         formattedSessions.map(s => ({ id: s.id, title: s.title }))
       );
       
+      // If backend list has not yet propagated the new title, force it locally
+      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
+        formattedSessions = formattedSessions.map(chat =>
+          chat.id === sessionId ? { ...chat, title: autoTitle } : chat
+        );
+      }
+      
       // CRITICAL: Final check before updating state
       if (activeRequestRef.current?.sessionId !== sessionId || 
           activeRequestRef.current?.requestId !== requestId) {
         console.log('Final state update ignored - user switched chats');
         return;
       }
-
-      // Update chat sessions with fresh data from backend
-      // Use formattedSessions directly - they already have the updated title from listChats
-      setChatSessions(formattedSessions.map(chat =>
-        chat.id === sessionId
-          ? { ...chat, messages: chatData.messages || [] }
-          : chat
-      ));
-      
-      console.log('[AUTO-TITLE] State updated with new title');
+ 
+       // Update chat sessions with fresh data from backend
+       // Use formattedSessions directly - they already have the updated title from listChats
+       setChatSessions(formattedSessions.map(chat =>
+         chat.id === sessionId
+           ? { ...chat, messages: chatData.messages || [] }
+           : chat
+       ));
+       
+       console.log('[AUTO-TITLE] State updated with new title');
     } catch (error) {
       console.error('Error processing request:', error);
       
