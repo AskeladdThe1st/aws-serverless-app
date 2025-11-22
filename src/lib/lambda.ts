@@ -71,17 +71,30 @@ export async function updateChatTitle(sessionId: string, userId: string, title: 
 export async function solveProblem(
   userId: string,
   sessionId: string,
-  text: string,
-  imageBase64?: string
+  text: string
 ) {
-  const payload: any = {
+  return callLambda({
     action: "solve",
     user_id: userId,
     session_id: sessionId,
     text,
+  });
+}
+
+export async function analyzeGraph(
+  userId: string,
+  sessionId: string,
+  imageBase64: string,
+  text?: string
+) {
+  const payload: any = {
+    action: "graph",
+    user_id: userId,
+    session_id: sessionId,
+    image: imageBase64,
   };
 
-  if (imageBase64) payload.image = imageBase64;
+  if (text) payload.text = text;
 
   return callLambda(payload);
 }
