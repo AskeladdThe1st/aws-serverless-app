@@ -229,6 +229,10 @@ const Index = () => {
     const requestId = crypto.randomUUID();
     activeRequestRef.current = { sessionId, requestId };
 
+    // Store original text for title generation later
+    const originalText = text;
+    const hasImage = !!image;
+
     // Optimistically show user message immediately
     const userMessage: Message = {
       role: 'user',
@@ -248,39 +252,70 @@ const Index = () => {
     try {
       // Route to correct backend action
       if (image) {
-        // ANY image upload -> use graph action
+        // ANY image upload -> use graph action only
         const imageBase64 = await fileToBase64(image);
-        await analyzeGraph(userId, sessionId, imageBase64, text);
+        // Pass text if available, otherwise undefined (not empty string)
+        await analyzeGraph(userId, sessionId, imageBase64, text.trim() || undefined);
       } else {
-        // Text only -> use solve action
+        // Text only -> use solve action only
         await solveProblem(userId, sessionId, text);
       }
 
-      // CRITICAL: Only proceed if still on the same chat
+      // CRITICAL: Check if still on the same chat after backend call
       if (activeRequestRef.current?.sessionId !== sessionId || 
           activeRequestRef.current?.requestId !== requestId) {
         console.log('Response ignored - user switched chats');
         return;
       }
 
-      // Auto-name chat if this is the first message (only if title is still "New Chat")
-      const currentChat = chatSessions.find(c => c.id === sessionId);
-      if (currentChat && currentChat.title === 'New Chat') {
-        const autoTitle = generateChatTitle(text, !!image);
-        await updateChatTitle(sessionId, userId, autoTitle);
-      }
-
       // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId);
       
-      // CRITICAL: Check again before updating state
+      // CRITICAL: Check again after loadChat
       if (activeRequestRef.current?.sessionId !== sessionId || 
           activeRequestRef.current?.requestId !== requestId) {
-        console.log('State update ignored - user switched chats');
+        console.log('Messages ignored - user switched chats');
         return;
       }
 
-      // Also refresh sidebar to show updated title
+      // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
+      let shouldUpdateTitle = false;
+      let autoTitle = '';
+      
+      // Check loaded chat data for title
+      if (chatData.title === 'New Chat') {
+        shouldUpdateTitle = true;
+        
+        // Determine text to use for title generation
+        let titleText = originalText;
+        
+        // If no text was provided, find first user message in loaded data
+        if (!titleText || !titleText.trim()) {
+          const firstUserMsg = chatData.messages?.find((m: Message) => m.role === 'user' && m.content?.trim());
+          titleText = firstUserMsg?.content || '';
+        }
+        
+        // Generate title
+        if (hasImage && (!titleText || !titleText.trim())) {
+          autoTitle = 'Graph Analysis';
+        } else {
+          autoTitle = generateChatTitle(titleText, hasImage);
+        }
+      }
+
+      // Update title if needed
+      if (shouldUpdateTitle && autoTitle) {
+        await updateChatTitle(sessionId, userId, autoTitle);
+        
+        // CRITICAL: Check again after updateChatTitle
+        if (activeRequestRef.current?.sessionId !== sessionId || 
+            activeRequestRef.current?.requestId !== requestId) {
+          console.log('Title update ignored - user switched chats');
+          return;
+        }
+      }
+
+      // Refresh sidebar to show updated title and all sessions
       const sessions = await listChats(userId);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       const formattedSessions: ChatSession[] = rawSessions.map(s => ({
@@ -290,6 +325,14 @@ const Index = () => {
         createdAt: s.created_at
       }));
       
+      // CRITICAL: Final check before updating state
+      if (activeRequestRef.current?.sessionId !== sessionId || 
+          activeRequestRef.current?.requestId !== requestId) {
+        console.log('Final state update ignored - user switched chats');
+        return;
+      }
+
+      // Update chat sessions with fresh data from backend
       setChatSessions(formattedSessions.map(chat =>
         chat.id === sessionId
           ? { ...chat, messages: chatData.messages || chat.messages }
