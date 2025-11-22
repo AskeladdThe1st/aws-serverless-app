@@ -288,8 +288,14 @@ const Index = () => {
       let shouldUpdateTitle = false;
       let autoTitle = '';
       
-      // Check loaded chat data for title
-      if (chatData.title === 'New Chat') {
+      // Check loaded chat data and local state for "New Chat" title
+      const localChat = chatSessions.find((c) => c.id === sessionId);
+      const isNewChatTitle =
+        chatData.title === 'New Chat' ||
+        localChat?.title === 'New Chat' ||
+        !chatData.title;
+      
+      if (isNewChatTitle) {
         shouldUpdateTitle = true;
         
         // Determine text to use for title generation
