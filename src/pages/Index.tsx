@@ -186,35 +186,22 @@ const Index = () => {
     }
   };
 
-  const renameChatSession = async (chatId: string, newTitle: string) => {
-    if (!newTitle.trim()) return;
-    
-    try {
-      const userId = getOrCreateUserId();
-      await updateChatTitle(chatId, userId, newTitle);
-      
-      // Reload from backend
-      const sessions = await listChats(userId);
-      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
-        id: s.session_id,
-        title: s.title,
-        messages: s.messages || [],
-        createdAt: s.created_at
-      }));
-      setChatSessions(formattedSessions);
-      
-      toast({
-        title: 'Chat renamed',
-      });
-    } catch (error) {
-      console.error('Error renaming chat:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to rename chat.',
-        variant: 'destructive',
-      });
+  const generateChatTitle = (text: string, hasImage: boolean): string => {
+    if (!text.trim() && hasImage) {
+      return 'Graph Analysis';
     }
+    
+    // Take first few words (3-6 words max)
+    const words = text.trim().split(/\s+/);
+    const titleWords = words.slice(0, 6);
+    let title = titleWords.join(' ');
+    
+    // Truncate if too long
+    if (title.length > 50) {
+      title = title.substring(0, 47) + '...';
+    }
+    
+    return title || 'New Chat';
   };
 
   const handleSend = async (text: string, image?: File) => {
@@ -248,15 +235,31 @@ const Index = () => {
 
       await solveProblem(userId, sessionId, text, imageBase64);
 
+      // Auto-name chat if this is the first message
+      const currentChat = chatSessions.find(c => c.id === sessionId);
+      if (currentChat && (currentChat.title === 'New Chat' || !currentChat.title)) {
+        const autoTitle = generateChatTitle(text, !!image);
+        await updateChatTitle(sessionId, userId, autoTitle);
+      }
+
       // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId);
-      setChatSessions(prev =>
-        prev.map(chat =>
-          chat.id === sessionId
-            ? { ...chat, messages: chatData.messages || chat.messages }
-            : chat
-        )
-      );
+      
+      // Also refresh sidebar to show updated title
+      const sessions = await listChats(userId);
+      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
+        id: s.session_id,
+        title: s.title,
+        messages: s.messages || [],
+        createdAt: s.created_at
+      }));
+      
+      setChatSessions(formattedSessions.map(chat =>
+        chat.id === sessionId
+          ? { ...chat, messages: chatData.messages || chat.messages }
+          : chat
+      ));
     } catch (error) {
       console.error('Error solving problem:', error);
       toast({
@@ -294,7 +297,6 @@ const Index = () => {
         onNewChat={createNewChat}
         onSelectChat={selectChat}
         onDeleteChat={deleteChatSession}
-        onRenameChat={renameChatSession}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

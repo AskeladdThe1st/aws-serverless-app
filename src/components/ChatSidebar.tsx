@@ -17,37 +17,15 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
-  onRenameChat: (id: string, newTitle: string) => void;
 }
 
-export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat, onRenameChat }: ChatSidebarProps) => {
+export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [editingChatId, setEditingChatId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
 
   const handleDeleteClick = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
     onDeleteChat(chatId);
-  };
-
-  const startEditing = (e: React.MouseEvent, chatId: string, currentTitle: string) => {
-    e.stopPropagation();
-    setEditingChatId(chatId);
-    setEditingTitle(currentTitle);
-  };
-
-  const saveEdit = (chatId: string) => {
-    if (editingTitle.trim() && editingTitle !== chats.find(c => c.id === chatId)?.title) {
-      onRenameChat(chatId, editingTitle.trim());
-    }
-    setEditingChatId(null);
-    setEditingTitle('');
-  };
-
-  const cancelEdit = () => {
-    setEditingChatId(null);
-    setEditingTitle('');
   };
 
   const toggleSidebar = () => setIsOpen(!isOpen);
@@ -159,10 +137,8 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                     <TooltipTrigger asChild>
                       <div
                         onClick={() => {
-                          if (editingChatId !== chat.id) {
-                            onSelectChat(chat.id);
-                            setIsOpen(false);
-                          }
+                          onSelectChat(chat.id);
+                          setIsOpen(false);
                         }}
                         className={cn(
                           "group relative flex items-center gap-2 mb-1 rounded-lg cursor-pointer transition-all",
@@ -175,42 +151,18 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                         
                         {!isCollapsed && (
                           <>
-                            {editingChatId === chat.id ? (
-                              <input
-                                type="text"
-                                value={editingTitle}
-                                onChange={(e) => setEditingTitle(e.target.value)}
-                                onBlur={() => saveEdit(chat.id)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    saveEdit(chat.id);
-                                  } else if (e.key === 'Escape') {
-                                    cancelEdit();
-                                  }
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                autoFocus
-                                className="w-full bg-[#151719] border border-[#3b82f6] text-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#3b82f6]"
-                              />
-                            ) : (
-                              <span
-                                onClick={(e) => startEditing(e, chat.id, chat.title)}
-                                className="flex-1 text-sm text-foreground truncate overflow-hidden whitespace-nowrap hover:text-primary transition-colors"
-                              >
-                                {chat.title}
-                              </span>
-                            )}
+                            <span className="flex-1 text-sm text-foreground truncate overflow-hidden whitespace-nowrap">
+                              {chat.title}
+                            </span>
                             
-                            {/* Delete Icon - Always rendered, visible on hover */}
-                            {editingChatId !== chat.id && (
-                              <button
-                                onClick={(e) => handleDeleteClick(e, chat.id)}
-                                className="flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all opacity-0 group-hover:opacity-100"
-                                aria-label="Delete chat"
-                              >
-                                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
-                              </button>
-                            )}
+                            {/* Delete Icon - visible on hover */}
+                            <button
+                              onClick={(e) => handleDeleteClick(e, chat.id)}
+                              className="flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all opacity-0 group-hover:opacity-100"
+                              aria-label="Delete chat"
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
+                            </button>
                           </>
                         )}
                       </div>
