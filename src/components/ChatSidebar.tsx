@@ -151,7 +151,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                         
                         {!isCollapsed && (
                           <>
-                            <span className="flex-1 text-sm text-foreground truncate overflow-hidden whitespace-nowrap">
+                            <span className="flex-1 text-sm text-foreground truncate min-w-0">
                               {chat.title}
                             </span>
                             

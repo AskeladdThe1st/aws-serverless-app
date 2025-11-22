@@ -38,33 +38,34 @@ export const ChatMessage = ({ message }: { message: Message }) => {
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
       <div
-        className={`relative group w-full max-w-full md:max-w-[85%] lg:max-w-[80%] rounded-2xl px-6 py-4 break-words overflow-hidden ${
+        className={`relative group max-w-[85%] rounded-2xl px-5 py-3 break-words overflow-hidden ${
           isUser
-            ? 'bg-secondary text-foreground border border-border'
-            : 'bg-card text-foreground border border-border shadow-sm'
+            ? 'bg-secondary text-foreground'
+            : 'bg-card text-foreground border border-border'
         }`}
       >
         {/* Copy Button - Only show for assistant messages with solutions */}
         {!isUser && (message.result || message.steps) && (
           <button
             onClick={handleCopy}
-            className="absolute top-3 right-3 p-2 rounded-lg bg-background hover:bg-background/80 opacity-0 group-hover:opacity-100 transition-all"
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 hover:bg-background opacity-0 group-hover:opacity-100 transition-all"
             aria-label="Copy solution"
           >
             {copied ? (
-              <Check className="h-4 w-4 text-emerald-400" />
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
             ) : (
-              <Copy className="h-4 w-4 text-muted-foreground" />
+              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
             )}
           </button>
         )}
+        
         {message.imageUrl && (
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-w-full rounded-lg mb-3 border border-border"
+            className="max-w-full rounded-lg mb-2 border border-border"
           />
         )}
         
@@ -72,27 +73,18 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           <ResponseView content={message.content} />
         </div>
 
-        {isUser && message.expression && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Expression:</div>
-            <div className="font-mono text-sm bg-background rounded p-2 mb-3 break-words overflow-x-auto">
-              <ResponseView content={`$$${message.expression}$$`} />
-            </div>
-          </div>
-        )}
-
-        {message.result && (
-          <div className="mt-3 break-words">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Result:</div>
-            <div className="text-base font-semibold">
+        {!isUser && message.result && (
+          <div className="mt-4 pt-3 border-t border-border/50 break-words">
+            <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Result:</div>
+            <div className="text-base">
               <ResponseView content={message.result} />
             </div>
           </div>
         )}
 
-        {message.steps && (
-          <div className="mt-3 break-words">
-            <div className="text-xs font-semibold mb-2 text-muted-foreground">Step-by-step solution:</div>
+        {!isUser && message.steps && (
+          <div className="mt-4 pt-3 border-t border-border/50 break-words">
+            <div className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Step-by-step solution:</div>
             <ResponseView content={message.steps} />
           </div>
         )}
