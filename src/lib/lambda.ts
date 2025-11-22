@@ -19,12 +19,36 @@ async function callLambda(body: any) {
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`Lambda error: ${res.status}`);
+  // Always try to read and return the JSON body, even on non-2xx
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch (e) {
+    // If there is no JSON body, fall back to a basic error
+    if (!res.ok) {
+      throw new Error(`Lambda error: ${res.status}`);
+    }
+    return null;
+  }
 
-  const json = await res.json();
-  if (json?.body) return JSON.parse(json.body);
+  // Some Lambda integrations wrap the payload in a body string
+  const parsed = json?.body ? JSON.parse(json.body) : json;
 
-  return json;
+  // If the backend explicitly returns an error field, surface it
+  if (!res.ok && parsed?.error) {
+    throw new Error(parsed.error);
+  }
+
+  // Otherwise, even for 4xx/5xx, return the parsed payload so
+  // the frontend can still load stored messages and titles
+  if (!res.ok && !parsed?.error) {
+    console.warn("Lambda returned non-2xx without explicit error", {
+      status: res.status,
+      payload: parsed,
+    });
+  }
+
+  return parsed;
 }
 
 export async function createChat(sessionId: string, userId: string, title: string) {
