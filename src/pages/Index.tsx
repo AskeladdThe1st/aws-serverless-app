@@ -279,6 +279,12 @@ const Index = () => {
       }
 
       // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
+      console.log('[AUTO-TITLE] Loaded chat data:', { 
+        sessionId, 
+        currentTitle: chatData.title,
+        hasMessages: !!chatData.messages?.length 
+      });
+      
       let shouldUpdateTitle = false;
       let autoTitle = '';
       
@@ -295,17 +301,26 @@ const Index = () => {
           titleText = firstUserMsg?.content || '';
         }
         
+        console.log('[AUTO-TITLE] Will generate title from:', { 
+          titleText: titleText?.substring(0, 50), 
+          hasImage 
+        });
+        
         // Generate title
         if (hasImage && (!titleText || !titleText.trim())) {
           autoTitle = 'Graph Analysis';
         } else {
           autoTitle = generateChatTitle(titleText, hasImage);
         }
+        
+        console.log('[AUTO-TITLE] Generated title:', autoTitle);
       }
 
       // Update title if needed
-      if (shouldUpdateTitle && autoTitle) {
+      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
+        console.log('[AUTO-TITLE] Calling updateChatTitle...');
         await updateChatTitle(sessionId, userId, autoTitle);
+        console.log('[AUTO-TITLE] updateChatTitle completed');
         
         // CRITICAL: Check again after updateChatTitle
         if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -316,6 +331,7 @@ const Index = () => {
       }
 
       // Refresh sidebar to show updated title and all sessions
+      console.log('[AUTO-TITLE] Fetching fresh chat list...');
       const sessions = await listChats(userId);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       const formattedSessions: ChatSession[] = rawSessions.map(s => ({
@@ -325,6 +341,10 @@ const Index = () => {
         createdAt: s.created_at
       }));
       
+      console.log('[AUTO-TITLE] Fresh sessions from backend:', 
+        formattedSessions.map(s => ({ id: s.id, title: s.title }))
+      );
+      
       // CRITICAL: Final check before updating state
       if (activeRequestRef.current?.sessionId !== sessionId || 
           activeRequestRef.current?.requestId !== requestId) {
@@ -333,11 +353,14 @@ const Index = () => {
       }
 
       // Update chat sessions with fresh data from backend
+      // Use formattedSessions directly - they already have the updated title from listChats
       setChatSessions(formattedSessions.map(chat =>
         chat.id === sessionId
-          ? { ...chat, messages: chatData.messages || chat.messages }
+          ? { ...chat, messages: chatData.messages || [] }
           : chat
       ));
+      
+      console.log('[AUTO-TITLE] State updated with new title');
     } catch (error) {
       console.error('Error processing request:', error);
       
