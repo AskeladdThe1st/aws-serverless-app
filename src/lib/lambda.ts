@@ -83,9 +83,19 @@ export async function deleteChat(sessionId: string, userId: string) {
   });
 }
 
-// NOTE: Title updates are handled purely on the frontend; there is no
-// supported backend "update" action in this app, so we do not export any
-// updateChatTitle helper that would call such an action.
+// Persist updated chat titles to DynamoDB using the existing "update" action
+export async function updateChatTitle(
+  sessionId: string,
+  userId: string,
+  title: string
+) {
+  return callLambda({
+    action: "update",
+    user_id: userId,
+    session_id: sessionId,
+    title,
+  });
+}
 
 export async function solveProblem(
   userId: string,
