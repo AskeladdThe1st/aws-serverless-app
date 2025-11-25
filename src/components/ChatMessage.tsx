@@ -63,7 +63,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           </button>
         )}
         
-        {/* Display multiple images if available - ChatGPT style horizontal scroll */}
+        {/* Display multiple images if available - uniform 300px max dimensions */}
         {message.imageUrls && message.imageUrls.length > 0 && (
           <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
             {message.imageUrls.map((url, idx) => (
@@ -71,8 +71,8 @@ export const ChatMessage = ({ message }: { message: Message }) => {
                 key={idx}
                 src={url} 
                 alt={`Uploaded ${idx + 1}`} 
-                className="max-w-full h-auto rounded-lg border border-border object-contain"
-                style={{ maxHeight: '300px' }}
+                className="rounded-lg border border-border object-contain"
+                style={{ maxWidth: '300px', maxHeight: '300px', width: 'auto', height: 'auto' }}
               />
             ))}
           </div>
@@ -83,8 +83,8 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-w-full h-auto rounded-lg mb-2 border border-border object-contain"
-            style={{ maxHeight: '300px' }}
+            className="rounded-lg mb-2 border border-border object-contain"
+            style={{ maxWidth: '300px', maxHeight: '300px', width: 'auto', height: 'auto' }}
           />
         )}
         
