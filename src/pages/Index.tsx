@@ -14,6 +14,7 @@ interface ChatSession {
   createdAt: number;
   awaitingClarification?: boolean; // Track if we're waiting for user clarification
   clarificationImages?: string[]; // Store base64 images for clarification
+  clarificationImagePreview?: string; // Store the image_preview from backend response
 }
 
 const Index = () => {
@@ -251,21 +252,38 @@ const Index = () => {
       const userId = getOrCreateUserId();
       const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
       
-      await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+      // Backend updates manual_mode for non-CRUD actions at line 269-270
+      // Send a request that will update manual_mode then continue processing
+      const response = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'update',
+          action: 'load',
           user_id: userId,
           session_id: sessionId,
           manual_mode: enabled,
         }),
       });
       
+      // Load action returns before updating manual_mode, so we need to send
+      // another request that reaches line 269. Use a dummy action that will update
+      // manual_mode then fail gracefully
+      await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: '__update_manual_mode',
+          user_id: userId,
+          session_id: sessionId,
+          manual_mode: enabled,
+        }),
+      }).catch(() => {}); // Ignore error - backend will return "unknown action" after updating
+      
       setIsManualMode(enabled);
       
       toast({
         title: enabled ? 'Manual mode enabled' : 'Manual mode disabled',
+        description: enabled ? 'You will receive clarifying questions for graph analysis' : 'Graphs will be analyzed automatically',
       });
     } catch (error) {
       console.error('Error updating manual mode:', error);
@@ -330,7 +348,12 @@ const Index = () => {
         setChatSessions(prev =>
           prev.map(chat =>
             chat.id === sessionId
-              ? { ...chat, awaitingClarification: false, clarificationImages: undefined }
+              ? { 
+                  ...chat, 
+                  awaitingClarification: false, 
+                  clarificationImages: undefined,
+                  clarificationImagePreview: undefined
+                }
               : chat
           )
         );
@@ -385,21 +408,53 @@ const Index = () => {
             
             if (text.trim()) payload.text = text;
             
-            await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            const graphResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
+            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+            
+            console.log('[GRAPH RESPONSE]', {
+              needs_clarification: graphResponse?.needs_clarification,
+              has_question: !!graphResponse?.question,
+              has_image_preview: !!graphResponse?.image_preview,
+              manual_mode: isManualMode
             });
             
-            // Store images for potential clarification
-            if (isManualMode) {
+            // Check if backend needs clarification
+            if (graphResponse?.needs_clarification && graphResponse?.question) {
+              // Store images and image preview for clarification
               setChatSessions(prev =>
                 prev.map(chat =>
                   chat.id === sessionId
-                    ? { ...chat, clarificationImages: imagesBase64 }
+                    ? { 
+                        ...chat, 
+                        awaitingClarification: true,
+                        clarificationImages: imagesBase64,
+                        clarificationImagePreview: graphResponse.image_preview
+                      }
                     : chat
                 )
               );
+              
+              console.log('[CLARIFICATION MODE]', {
+                stored_images: imagesBase64.length,
+                has_preview: !!graphResponse.image_preview
+              });
+              
+              // Don't proceed to reload - let the backend messages handle it
+              // The backend already stored the clarification question in messages
+            } else {
+              // Store images for potential future clarification
+              if (isManualMode) {
+                setChatSessions(prev =>
+                  prev.map(chat =>
+                    chat.id === sessionId
+                      ? { ...chat, clarificationImages: imagesBase64 }
+                      : chat
+                  )
+                );
+              }
             }
           } else {
             // Not a graph -> send solve action with all images
@@ -438,13 +493,12 @@ const Index = () => {
         return;
       }
 
-      // Check if backend returned needs_clarification
+      // Check if backend returned needs_clarification from the stored messages
       const lastMessage = chatData.messages?.[chatData.messages.length - 1];
-      const needsClarification = lastMessage?.role === 'assistant' && 
-                                 lastMessage?.content?.toLowerCase().includes('which feature') ||
-                                 lastMessage?.content?.toLowerCase().includes('what would you like');
+      const lastAssistantMessage = chatData.messages?.slice().reverse().find(m => m.role === 'assistant');
+      const needsClarification = lastAssistantMessage?.content?.includes('?') && isManualMode;
       
-      if (needsClarification && isManualMode) {
+      if (needsClarification) {
         // Set clarification state
         setChatSessions(prev =>
           prev.map(chat =>
@@ -457,11 +511,31 @@ const Index = () => {
 
       // Process messages to attach images correctly
       if (chatData.messages) {
+        const currentClarificationPreview = currentChat?.clarificationImagePreview;
+        
         chatData.messages = chatData.messages.map((msg: Message, idx: number) => {
-          // Show image_preview from backend for assistant clarification messages
-          if (msg.role === 'assistant' && msg.image_preview) {
-            return { ...msg, imageUrls: [msg.image_preview] };
+          // For assistant clarification messages (questions), attach the stored image preview
+          if (msg.role === 'assistant' && 
+              msg.content?.includes('?') && 
+              currentClarificationPreview &&
+              idx === chatData.messages.length - 1) {
+            console.log('[ATTACHING IMAGE PREVIEW]', {
+              message_index: idx,
+              has_preview: !!currentClarificationPreview,
+              preview_length: currentClarificationPreview.length
+            });
+            return { 
+              ...msg, 
+              image_preview: currentClarificationPreview,
+              imageUrls: [`data:image/png;base64,${currentClarificationPreview}`]
+            };
           }
+          
+          // Show image_preview from backend for assistant clarification messages (fallback)
+          if (msg.role === 'assistant' && msg.image_preview) {
+            return { ...msg, imageUrls: [`data:image/png;base64,${msg.image_preview}`] };
+          }
+          
           // Attach user's uploaded images to assistant responses
           if (msg.role === 'assistant' && idx > 0 && images?.length) {
             const prevMsg = chatData.messages[idx - 1];
@@ -469,6 +543,7 @@ const Index = () => {
               return { ...msg, imageUrls: prevMsg.imageUrls };
             }
           }
+          
           return msg;
         });
       }
