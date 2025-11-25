@@ -12,6 +12,8 @@ interface ChatSession {
   title: string;
   messages: Message[];
   createdAt: number;
+  awaitingClarification?: boolean; // Track if we're waiting for user clarification
+  clarificationImages?: string[]; // Store base64 images for clarification
 }
 
 const Index = () => {
@@ -259,6 +261,10 @@ const Index = () => {
     const originalText = text;
     const hasImage = !!images?.length;
 
+    // Check if we're responding to a clarification request
+    const currentChat = chatSessions.find(c => c.id === sessionId);
+    const isRespondingToClarification = currentChat?.awaitingClarification && !images;
+
     // Optimistically show user message immediately with all images
     const userMessage: Message = {
       role: 'user',
@@ -276,8 +282,31 @@ const Index = () => {
     setIsLoading(true);
 
     try {
-      // Route to correct backend action
-      if (images && images.length > 0) {
+      // Handle clarification response
+      if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
+        await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'clarify_graph',
+            user_id: userId,
+            session_id: sessionId,
+            text: text,
+            images: [currentChat.clarificationImages[0]], // Use stored image
+          }),
+        });
+        
+        // Clear clarification state
+        setChatSessions(prev =>
+          prev.map(chat =>
+            chat.id === sessionId
+              ? { ...chat, awaitingClarification: false, clarificationImages: undefined }
+              : chat
+          )
+        );
+      }
+      // Route to correct backend action for new requests with images
+      else if (images && images.length > 0) {
         // Convert all images to base64
         const imagesBase64 = await Promise.all(images.map(img => fileToBase64(img)));
         
@@ -301,58 +330,50 @@ const Index = () => {
             }),
           });
         } else {
-          try {
-            // Classify the first image
-            const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+          // Use the new classify action
+          const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'classify',
+              user_id: userId,
+              session_id: sessionId,
+              images: [imagesBase64[0]], // Classify first image only
+            }),
+          }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+          
+          const classification = classifyResponse?.classification || 'solve';
+          
+          if (classification === 'graph') {
+            // It's a graph -> send graph action with first image only
+            const payload: any = {
+              action: "graph",
+              user_id: userId,
+              session_id: sessionId,
+              images: [imagesBase64[0]],
+              manual_mode: isManualMode,
+            };
+            
+            if (text.trim()) payload.text = text;
+            
+            await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'solve',
-                user_id: userId,
-                session_id: sessionId,
-                text: 'Classify this image: is it a graph or a math question? Answer with just "graph" or "not graph".',
-                images: [imagesBase64[0]],
-              }),
-            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+              body: JSON.stringify(payload),
+            });
             
-            const classificationText = classifyResponse?.analysis || '';
-            const isGraph = classificationText.toLowerCase().includes('graph') && 
-                           !classificationText.toLowerCase().includes('not graph');
-            
-            if (isGraph) {
-              // It's a graph -> send graph action with first image only
-              const payload: any = {
-                action: "graph",
-                user_id: userId,
-                session_id: sessionId,
-                images: [imagesBase64[0]],
-                manual_mode: isManualMode,
-              };
-              
-              if (text.trim()) payload.text = text;
-              
-              await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              });
-            } else {
-              // Not a graph -> send solve action with all images
-              await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  action: 'solve',
-                  user_id: userId,
-                  session_id: sessionId,
-                  text: text || 'Solve this problem',
-                  images: imagesBase64,
-                }),
-              });
+            // Store images for potential clarification
+            if (isManualMode) {
+              setChatSessions(prev =>
+                prev.map(chat =>
+                  chat.id === sessionId
+                    ? { ...chat, clarificationImages: imagesBase64 }
+                    : chat
+                )
+              );
             }
-          } catch (classifyError) {
-            console.error('Classification error, falling back to solve:', classifyError);
-            // Fallback to solve if classification fails
+          } else {
+            // Not a graph -> send solve action with all images
             await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -386,6 +407,23 @@ const Index = () => {
           activeRequestRef.current?.requestId !== requestId) {
         console.log('Messages ignored - user switched chats');
         return;
+      }
+
+      // Check if backend returned needs_clarification
+      const lastMessage = chatData.messages?.[chatData.messages.length - 1];
+      const needsClarification = lastMessage?.role === 'assistant' && 
+                                 lastMessage?.content?.toLowerCase().includes('which feature') ||
+                                 lastMessage?.content?.toLowerCase().includes('what would you like');
+      
+      if (needsClarification && isManualMode) {
+        // Set clarification state
+        setChatSessions(prev =>
+          prev.map(chat =>
+            chat.id === sessionId
+              ? { ...chat, awaitingClarification: true }
+              : chat
+          )
+        );
       }
 
       // Attach images to assistant response so they display alongside the answer
