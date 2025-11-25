@@ -2,11 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
-import { GraphClarificationPanel } from '@/components/GraphClarificationPanel';
+import { SettingsPanel } from '@/components/SettingsPanel';
 import { useToast } from '@/hooks/use-toast';
 import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
-import { Calculator } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
   id: string;
@@ -15,21 +14,13 @@ interface ChatSession {
   createdAt: number;
 }
 
-interface ClarificationStep {
-  stepNumber: number;
-  question: string;
-  answer?: string;
-}
-
 const Index = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
   const [isManualMode, setIsManualMode] = useState(false);
-  const [clarificationSteps, setClarificationSteps] = useState<ClarificationStep[]>([]);
-  const [graphImagePreview, setGraphImagePreview] = useState<string>('');
-  const [isAnalysisComplete, setIsAnalysisComplete] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
@@ -246,15 +237,8 @@ const Index = () => {
     return title || 'New Chat';
   };
 
-  const resetManualMode = () => {
-    setIsManualMode(false);
-    setClarificationSteps([]);
-    setGraphImagePreview('');
-    setIsAnalysisComplete(false);
-  };
-
-  const handleSend = async (text: string, image?: File) => {
-    if ((!text.trim() && !image) || isLoading) return;
+  const handleSend = async (text: string, images?: File[]) => {
+    if ((!text.trim() && !images?.length) || isLoading) return;
 
     const userId = getOrCreateUserId();
     const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
@@ -266,13 +250,13 @@ const Index = () => {
 
     // Store original text for title generation later
     const originalText = text;
-    const hasImage = !!image;
+    const hasImage = !!images?.length;
 
     // Optimistically show user message immediately
     const userMessage: Message = {
       role: 'user',
-      content: text || 'Analyzing image...',
-      imageUrl: image ? URL.createObjectURL(image) : undefined,
+      content: text || 'Analyzing images...',
+      imageUrl: images?.[0] ? URL.createObjectURL(images[0]) : undefined,
     };
     setChatSessions(prev =>
       prev.map(chat =>
@@ -285,11 +269,10 @@ const Index = () => {
     setIsLoading(true);
 
     try {
-      let backendResponse: any;
-
       // Route to correct backend action
-      if (image) {
-        const imageBase64 = await fileToBase64(image);
+      if (images && images.length > 0) {
+        // Convert all images to base64
+        const imagesBase64 = await Promise.all(images.map(img => fileToBase64(img)));
         
         // Check for derivative keywords in user text
         const derivativeKeywords = ['derivative', 'd/dx', 'dp/dq', 'dy/dx', 'differentiate'];
@@ -299,11 +282,20 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await solveProblem(userId, sessionId, text);
-          backendResponse = null;
+          await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'solve',
+              user_id: userId,
+              session_id: sessionId,
+              text: text || 'Solve this problem',
+              images: imagesBase64,
+            }),
+          });
         } else {
           try {
-            // Classify the image first
+            // Classify the first image
             const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -312,7 +304,7 @@ const Index = () => {
                 user_id: userId,
                 session_id: sessionId,
                 text: 'Classify this image: is it a graph or a math question? Answer with just "graph" or "not graph".',
-                image: imageBase64,
+                images: [imagesBase64[0]],
               }),
             }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
             
@@ -321,62 +313,50 @@ const Index = () => {
                            !classificationText.toLowerCase().includes('not graph');
             
             if (isGraph) {
-              // It's a graph -> send graph action
-              if (isManualMode && !graphImagePreview) {
-                setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
-              }
-              
+              // It's a graph -> send graph action with first image only
               const payload: any = {
                 action: "graph",
                 user_id: userId,
                 session_id: sessionId,
-                image: imageBase64,
+                images: [imagesBase64[0]],
                 manual_mode: isManualMode,
               };
               
               if (text.trim()) payload.text = text;
               
-              backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-            } else {
-              // Not a graph -> send solve action
-              const solvePayload: any = {
-                action: 'solve',
-                user_id: userId,
-                session_id: sessionId,
-                text: text || 'Solve this problem',
-                image: imageBase64,
-              };
-              
               await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(solvePayload),
-              }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-              
-              backendResponse = null;
+                body: JSON.stringify(payload),
+              });
+            } else {
+              // Not a graph -> send solve action with all images
+              await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'solve',
+                  user_id: userId,
+                  session_id: sessionId,
+                  text: text || 'Solve this problem',
+                  images: imagesBase64,
+                }),
+              });
             }
           } catch (classifyError) {
             console.error('Classification error, falling back to solve:', classifyError);
             // Fallback to solve if classification fails
-            const solvePayload: any = {
-              action: 'solve',
-              user_id: userId,
-              session_id: sessionId,
-              text: text || 'Solve this problem',
-              image: imageBase64,
-            };
-            
             await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(solvePayload),
-            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-            
-            backendResponse = null;
+              body: JSON.stringify({
+                action: 'solve',
+                user_id: userId,
+                session_id: sessionId,
+                text: text || 'Solve this problem',
+                images: imagesBase64,
+              }),
+            });
           }
         }
       } else {
@@ -389,31 +369,6 @@ const Index = () => {
           activeRequestRef.current?.requestId !== requestId) {
         console.log('Response ignored - user switched chats');
         return;
-      }
-
-      // Handle manual mode clarifications
-      if (isManualMode && backendResponse) {
-        if (backendResponse.needs_clarification) {
-          // Add the clarification question to steps
-          setClarificationSteps(prev => [
-            ...prev,
-            {
-              stepNumber: backendResponse.step_number || prev.length + 1,
-              question: backendResponse.question,
-              answer: text.trim() || undefined,
-            }
-          ]);
-        }
-        
-        if (backendResponse.analysis_complete) {
-          setIsAnalysisComplete(true);
-          // Reset manual mode after a delay to show completion
-          setTimeout(() => resetManualMode(), 3000);
-        }
-        
-        if (backendResponse.image_preview) {
-          setGraphImagePreview(backendResponse.image_preview);
-        }
       }
 
       // Reload messages from DynamoDB after backend updates
@@ -572,23 +527,14 @@ const Index = () => {
             </div>
           </div>
           
-          {/* Toggle in top-right */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={!isManualMode ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => resetManualMode()}
-            >
-              Auto Graph
-            </Button>
-            <Button
-              variant={isManualMode ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setIsManualMode(true)}
-            >
-              Manual Graph
-            </Button>
-          </div>
+          {/* Settings icon in top-right */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-lg hover:bg-accent"
+            aria-label="Settings"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
         </header>
 
         <div
@@ -637,12 +583,11 @@ const Index = () => {
         </div>
       </div>
 
-      <GraphClarificationPanel
-        isOpen={isManualMode && (clarificationSteps.length > 0 || graphImagePreview !== '')}
-        imagePreview={graphImagePreview}
-        steps={clarificationSteps}
-        isComplete={isAnalysisComplete}
-        onClose={resetManualMode}
+      <SettingsPanel
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        manualMode={isManualMode}
+        onManualModeChange={setIsManualMode}
       />
     </div>
   );

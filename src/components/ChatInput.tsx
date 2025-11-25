@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip, Camera } from 'lucide-react';
+import { Send, Paperclip, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChatInputProps {
-  onSend: (text: string, image?: File) => void;
+  onSend: (text: string, images?: File[]) => void;
   disabled?: boolean;
 }
 
 export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const [input, setInput] = useState('');
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -23,13 +23,17 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
       const items = e.clipboardData?.items;
       if (!items) return;
 
+      const imageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
-          e.preventDefault();
           const file = items[i].getAsFile();
-          if (file) handleImageSelect(file);
-          break;
+          if (file) imageFiles.push(file);
         }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        handleImageSelect(imageFiles);
       }
     };
 
@@ -55,41 +59,55 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [input, selectedImage, disabled]);
+  }, [input, selectedImages, disabled]);
 
-  const handleImageSelect = (file: File) => {
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: 'Image too large',
-        description: 'Please select an image under 10MB',
-        variant: 'destructive',
-      });
-      return;
+  const handleImageSelect = (files: File[]) => {
+    const validFiles: File[] = [];
+    const urls: string[] = [];
+
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: 'Image too large',
+          description: `${file.name} is over 10MB`,
+          variant: 'destructive',
+        });
+        continue;
+      }
+      validFiles.push(file);
+      urls.push(URL.createObjectURL(file));
     }
 
-    setSelectedImage(file);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setSelectedImages(prev => [...prev, ...validFiles]);
+    setPreviewUrls(prev => [...prev, ...urls]);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleImageSelect(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleImageSelect(Array.from(files));
+    }
   };
 
-  const clearImage = () => {
-    setSelectedImage(null);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
+  const removeImage = (index: number) => {
+    URL.revokeObjectURL(previewUrls[index]);
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearImages = () => {
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    setSelectedImages([]);
+    setPreviewUrls([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = () => {
-    if ((!input.trim() && !selectedImage) || disabled) return;
+    if ((!input.trim() && selectedImages.length === 0) || disabled) return;
 
-    onSend(input, selectedImage || undefined);
+    onSend(input, selectedImages.length > 0 ? selectedImages : undefined);
     setInput('');
-    clearImage();
+    clearImages();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -101,19 +119,23 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
 
   return (
     <div className="bg-card border-t border-border p-4 md:p-6">
-      {previewUrl && (
-        <div className="mb-3 max-w-4xl mx-auto relative inline-block">
-          <img
-            src={previewUrl}
-            alt="Preview"
-            className="max-h-32 rounded-xl border border-border"
-          />
-          <button
-            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center text-lg font-semibold"
-            onClick={clearImage}
-          >
-            ×
-          </button>
+      {previewUrls.length > 0 && (
+        <div className="mb-3 max-w-4xl mx-auto flex flex-wrap gap-2">
+          {previewUrls.map((url, index) => (
+            <div key={index} className="relative inline-block">
+              <img
+                src={url}
+                alt={`Preview ${index + 1}`}
+                className="max-h-32 rounded-xl border border-border"
+              />
+              <button
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center"
+                onClick={() => removeImage(index)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -122,6 +144,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={handleFileChange}
         />
@@ -169,7 +192,7 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
 
           <button
             onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && !selectedImage)}
+            disabled={disabled || (!input.trim() && selectedImages.length === 0)}
             className="shrink-0 h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-colors"
             aria-label="Send message"
           >
