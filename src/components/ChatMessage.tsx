@@ -11,6 +11,7 @@ export interface Message {
   steps?: string;
   imageUrl?: string;
   imageUrls?: string[]; // Support multiple images
+  image_preview?: string; // Base64 image from backend for clarification
 }
 
 export const ChatMessage = ({ message }: { message: Message }) => {
@@ -62,15 +63,16 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           </button>
         )}
         
-        {/* Display multiple images if available */}
+        {/* Display multiple images if available - ChatGPT style horizontal scroll */}
         {message.imageUrls && message.imageUrls.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
             {message.imageUrls.map((url, idx) => (
               <img 
                 key={idx}
                 src={url} 
                 alt={`Uploaded ${idx + 1}`} 
-                className="max-h-40 rounded-lg border border-border object-contain"
+                className="max-w-full h-auto rounded-lg border border-border object-contain"
+                style={{ maxHeight: '300px' }}
               />
             ))}
           </div>
@@ -81,7 +83,8 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-h-40 rounded-lg mb-2 border border-border object-contain"
+            className="max-w-full h-auto rounded-lg mb-2 border border-border object-contain"
+            style={{ maxHeight: '300px' }}
           />
         )}
         

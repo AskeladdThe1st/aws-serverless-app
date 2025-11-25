@@ -292,7 +292,7 @@ const Index = () => {
             user_id: userId,
             session_id: sessionId,
             text: text,
-            images: [currentChat.clarificationImages[0]], // Use stored image
+            images: currentChat.clarificationImages, // Send all stored images
           }),
         });
         
@@ -426,12 +426,15 @@ const Index = () => {
         );
       }
 
-      // Attach images to assistant response so they display alongside the answer
-      if (chatData.messages && images?.length) {
-        const imageUrls = images.map(img => URL.createObjectURL(img));
+      // Process messages to attach images correctly
+      if (chatData.messages) {
         chatData.messages = chatData.messages.map((msg: Message, idx: number) => {
-          // Find the assistant message that follows the user's message with images
-          if (msg.role === 'assistant' && idx > 0) {
+          // Show image_preview from backend for assistant clarification messages
+          if (msg.role === 'assistant' && msg.image_preview) {
+            return { ...msg, imageUrls: [msg.image_preview] };
+          }
+          // Attach user's uploaded images to assistant responses
+          if (msg.role === 'assistant' && idx > 0 && images?.length) {
             const prevMsg = chatData.messages[idx - 1];
             if (prevMsg.role === 'user' && prevMsg.imageUrls) {
               return { ...msg, imageUrls: prevMsg.imageUrls };
