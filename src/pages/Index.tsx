@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
-import { ManualGraphPanel, GraphFeatures } from '@/components/ManualGraphPanel';
+import { GraphClarificationPanel } from '@/components/GraphClarificationPanel';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, analyzeGraph, analyzeManualGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
+import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -15,13 +15,21 @@ interface ChatSession {
   createdAt: number;
 }
 
+interface ClarificationStep {
+  stepNumber: number;
+  question: string;
+  answer?: string;
+}
+
 const Index = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
   const [isManualMode, setIsManualMode] = useState(false);
-  const [isManualPanelOpen, setIsManualPanelOpen] = useState(false);
+  const [clarificationSteps, setClarificationSteps] = useState<ClarificationStep[]>([]);
+  const [graphImagePreview, setGraphImagePreview] = useState<string>('');
+  const [isAnalysisComplete, setIsAnalysisComplete] = useState(false);
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
@@ -222,59 +230,11 @@ const Index = () => {
     return title || 'New Chat';
   };
 
-  const handleManualGraphSubmit = async (graphFeatures: GraphFeatures) => {
-    const sessionId = activeChatId;
-    if (!sessionId) {
-      toast({
-        title: "Error",
-        description: "No active chat session.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const userId = getOrCreateUserId();
-    setIsLoading(true);
-
-    try {
-      console.log('[MANUAL-GRAPH] Submitting manual graph features...');
-      
-      await analyzeManualGraph(userId, sessionId, graphFeatures);
-      
-      const rawSessions = await listChats(userId);
-      const chatData = rawSessions?.sessions?.find((s: any) => s.session_id === sessionId);
-      
-      if (chatData?.messages) {
-        const formattedSessions = rawSessions.sessions.map((session: any) => ({
-          id: session.session_id,
-          title: session.title || 'New Chat',
-          messages: session.messages || [],
-          createdAt: session.created_at || new Date().toISOString(),
-        }));
-
-        setChatSessions(formattedSessions.map((chat: ChatSession) =>
-          chat.id === sessionId
-            ? { ...chat, messages: chatData.messages }
-            : chat
-        ));
-      }
-
-      setIsManualPanelOpen(false);
-      
-      toast({
-        title: "Success",
-        description: "Graph analysis complete!",
-      });
-    } catch (error) {
-      console.error('[MANUAL-GRAPH] Error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to analyze graph features. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const resetManualMode = () => {
+    setIsManualMode(false);
+    setClarificationSteps([]);
+    setGraphImagePreview('');
+    setIsAnalysisComplete(false);
   };
 
   const handleSend = async (text: string, image?: File) => {
@@ -309,12 +269,33 @@ const Index = () => {
     setIsLoading(true);
 
     try {
+      let backendResponse: any;
+
       // Route to correct backend action
       if (image) {
-        // ANY image upload -> use graph action only
+        // Image upload -> use graph action with manualMode flag
         const imageBase64 = await fileToBase64(image);
-        // Pass text if available, otherwise undefined (not empty string)
-        await analyzeGraph(userId, sessionId, imageBase64, text.trim() || undefined);
+        
+        // Store image preview for manual mode panel
+        if (isManualMode && !graphImagePreview) {
+          setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
+        }
+        
+        const payload: any = {
+          action: "graph",
+          user_id: userId,
+          session_id: sessionId,
+          image: imageBase64,
+          manual_mode: isManualMode,
+        };
+        
+        if (text.trim()) payload.text = text;
+        
+        backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
       } else {
         // Text only -> use solve action only
         await solveProblem(userId, sessionId, text);
@@ -325,6 +306,31 @@ const Index = () => {
           activeRequestRef.current?.requestId !== requestId) {
         console.log('Response ignored - user switched chats');
         return;
+      }
+
+      // Handle manual mode clarifications
+      if (isManualMode && backendResponse) {
+        if (backendResponse.needs_clarification) {
+          // Add the clarification question to steps
+          setClarificationSteps(prev => [
+            ...prev,
+            {
+              stepNumber: backendResponse.step_number || prev.length + 1,
+              question: backendResponse.question,
+              answer: text.trim() || undefined,
+            }
+          ]);
+        }
+        
+        if (backendResponse.analysis_complete) {
+          setIsAnalysisComplete(true);
+          // Reset manual mode after a delay to show completion
+          setTimeout(() => resetManualMode(), 3000);
+        }
+        
+        if (backendResponse.image_preview) {
+          setGraphImagePreview(backendResponse.image_preview);
+        }
       }
 
       // Reload messages from DynamoDB after backend updates
@@ -482,36 +488,25 @@ const Index = () => {
               <p className="text-sm text-muted-foreground">Your personal math solver</p>
             </div>
           </div>
-        </header>
-
-        <div className="border-b border-border px-4 py-3 flex items-center justify-between bg-card">
-          <div className="flex items-center gap-2">
-            <Calculator className="h-5 w-5 text-primary" />
-            <span className="font-medium text-foreground">Graph Analysis Mode</span>
-          </div>
+          
+          {/* Toggle in top-right */}
           <div className="flex items-center gap-2">
             <Button
               variant={!isManualMode ? 'default' : 'outline'}
               size="sm"
-              onClick={() => {
-                setIsManualMode(false);
-                setIsManualPanelOpen(false);
-              }}
+              onClick={() => resetManualMode()}
             >
               Auto Graph
             </Button>
             <Button
               variant={isManualMode ? 'default' : 'outline'}
               size="sm"
-              onClick={() => {
-                setIsManualMode(true);
-                setIsManualPanelOpen(true);
-              }}
+              onClick={() => setIsManualMode(true)}
             >
               Manual Graph
             </Button>
           </div>
-        </div>
+        </header>
 
         <div
           ref={messagesContainerRef}
@@ -554,21 +549,17 @@ const Index = () => {
 
         <div className="border-t border-border px-4 py-4 bg-card">
           <div className="max-w-3xl mx-auto">
-            <ChatInput onSend={handleSend} disabled={isLoading || isManualMode} />
-            {isManualMode && (
-              <p className="text-sm text-muted-foreground mt-2 text-center">
-                Manual Graph Mode active. Use the panel to enter graph features.
-              </p>
-            )}
+            <ChatInput onSend={handleSend} disabled={isLoading} />
           </div>
         </div>
       </div>
 
-      <ManualGraphPanel
-        isOpen={isManualPanelOpen}
-        onClose={() => setIsManualPanelOpen(false)}
-        onSubmit={handleManualGraphSubmit}
-        isLoading={isLoading}
+      <GraphClarificationPanel
+        isOpen={isManualMode && (clarificationSteps.length > 0 || graphImagePreview !== '')}
+        imagePreview={graphImagePreview}
+        steps={clarificationSteps}
+        isComplete={isAnalysisComplete}
+        onClose={resetManualMode}
       />
     </div>
   );

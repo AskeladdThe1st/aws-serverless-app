@@ -128,18 +128,6 @@ export async function analyzeGraph(
   return callLambda(payload);
 }
 
-export async function analyzeManualGraph(
-  userId: string,
-  sessionId: string,
-  graphFeatures: any
-) {
-  return callLambda({
-    action: "manual_graph",
-    user_id: userId,
-    session_id: sessionId,
-    graph_features: graphFeatures,
-  });
-}
 
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
