@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
+import { ManualGraphPanel, GraphFeatures } from '@/components/ManualGraphPanel';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
+import { solveProblem, analyzeGraph, analyzeManualGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
 import { Calculator } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ChatSession {
   id: string;
@@ -18,6 +20,8 @@ const Index = () => {
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [isManualPanelOpen, setIsManualPanelOpen] = useState(false);
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
@@ -216,6 +220,61 @@ const Index = () => {
     }
     
     return title || 'New Chat';
+  };
+
+  const handleManualGraphSubmit = async (graphFeatures: GraphFeatures) => {
+    const sessionId = activeChatId;
+    if (!sessionId) {
+      toast({
+        title: "Error",
+        description: "No active chat session.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const userId = getOrCreateUserId();
+    setIsLoading(true);
+
+    try {
+      console.log('[MANUAL-GRAPH] Submitting manual graph features...');
+      
+      await analyzeManualGraph(userId, sessionId, graphFeatures);
+      
+      const rawSessions = await listChats(userId);
+      const chatData = rawSessions?.sessions?.find((s: any) => s.session_id === sessionId);
+      
+      if (chatData?.messages) {
+        const formattedSessions = rawSessions.sessions.map((session: any) => ({
+          id: session.session_id,
+          title: session.title || 'New Chat',
+          messages: session.messages || [],
+          createdAt: session.created_at || new Date().toISOString(),
+        }));
+
+        setChatSessions(formattedSessions.map((chat: ChatSession) =>
+          chat.id === sessionId
+            ? { ...chat, messages: chatData.messages }
+            : chat
+        ));
+      }
+
+      setIsManualPanelOpen(false);
+      
+      toast({
+        title: "Success",
+        description: "Graph analysis complete!",
+      });
+    } catch (error) {
+      console.error('[MANUAL-GRAPH] Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze graph features. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSend = async (text: string, image?: File) => {
@@ -425,6 +484,35 @@ const Index = () => {
           </div>
         </header>
 
+        <div className="border-b border-border px-4 py-3 flex items-center justify-between bg-card">
+          <div className="flex items-center gap-2">
+            <Calculator className="h-5 w-5 text-primary" />
+            <span className="font-medium text-foreground">Graph Analysis Mode</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={!isManualMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setIsManualMode(false);
+                setIsManualPanelOpen(false);
+              }}
+            >
+              Auto Graph
+            </Button>
+            <Button
+              variant={isManualMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setIsManualMode(true);
+                setIsManualPanelOpen(true);
+              }}
+            >
+              Manual Graph
+            </Button>
+          </div>
+        </div>
+
         <div
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto px-4 py-4"
@@ -464,8 +552,24 @@ const Index = () => {
           </div>
         </div>
 
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        <div className="border-t border-border px-4 py-4 bg-card">
+          <div className="max-w-3xl mx-auto">
+            <ChatInput onSend={handleSend} disabled={isLoading || isManualMode} />
+            {isManualMode && (
+              <p className="text-sm text-muted-foreground mt-2 text-center">
+                Manual Graph Mode active. Use the panel to enter graph features.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
+
+      <ManualGraphPanel
+        isOpen={isManualPanelOpen}
+        onClose={() => setIsManualPanelOpen(false)}
+        onSubmit={handleManualGraphSubmit}
+        isLoading={isLoading}
+      />
     </div>
   );
 };
