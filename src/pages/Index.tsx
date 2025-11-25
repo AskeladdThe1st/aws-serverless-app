@@ -62,10 +62,7 @@ const Index = () => {
         }
       } catch (error) {
         console.error('Error loading chats:', error);
-        toast({
-          title: 'Error loading chats',
-          variant: 'destructive',
-        });
+        // Don't show error toast on initial load - just create a new chat
         await createNewChat();
       } finally {
         setIsFetchingChats(false);
@@ -144,10 +141,7 @@ const Index = () => {
       });
     } catch (error) {
       console.error('Error creating chat:', error);
-      toast({
-        title: 'Error',
-        variant: 'destructive',
-      });
+      // Don't show error toast - just proceed with local session
     }
   };
 
@@ -183,10 +177,7 @@ const Index = () => {
       });
     } catch (error) {
       console.error('Error deleting chat:', error);
-      toast({
-        title: 'Error',
-        variant: 'destructive',
-      });
+      // Don't show toast for delete errors - just log them
     }
   };
 
