@@ -252,11 +252,11 @@ const Index = () => {
     const originalText = text;
     const hasImage = !!images?.length;
 
-    // Optimistically show user message immediately
+    // Optimistically show user message immediately with all images
     const userMessage: Message = {
       role: 'user',
       content: text || 'Analyzing images...',
-      imageUrl: images?.[0] ? URL.createObjectURL(images[0]) : undefined,
+      imageUrls: images?.length ? images.map(img => URL.createObjectURL(img)) : undefined,
     };
     setChatSessions(prev =>
       prev.map(chat =>

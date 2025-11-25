@@ -10,6 +10,7 @@ export interface Message {
   result?: string;
   steps?: string;
   imageUrl?: string;
+  imageUrls?: string[]; // Support multiple images
 }
 
 export const ChatMessage = ({ message }: { message: Message }) => {
@@ -61,7 +62,22 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           </button>
         )}
         
-        {message.imageUrl && (
+        {/* Display multiple images if available */}
+        {message.imageUrls && message.imageUrls.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {message.imageUrls.map((url, idx) => (
+              <img 
+                key={idx}
+                src={url} 
+                alt={`Uploaded ${idx + 1}`} 
+                className="max-h-48 rounded-lg border border-border"
+              />
+            ))}
+          </div>
+        )}
+        
+        {/* Fallback for single imageUrl (backwards compatibility) */}
+        {!message.imageUrls && message.imageUrl && (
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
