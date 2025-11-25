@@ -22,12 +22,12 @@ export const SettingsPanel = ({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-background/60 z-40 animate-in fade-in duration-200"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-80 bg-card border-l border-border z-50 overflow-y-auto animate-in slide-in-from-right duration-300">
+      <div className="fixed right-0 top-0 h-full w-80 bg-card border-l border-border z-50 overflow-y-auto transition-transform duration-200 ease-out" style={{ transform: 'translateX(0)', willChange: 'transform' }}>
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
