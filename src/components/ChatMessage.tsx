@@ -70,7 +70,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
                 key={idx}
                 src={url} 
                 alt={`Uploaded ${idx + 1}`} 
-                className="max-h-48 rounded-lg border border-border"
+                className="max-h-40 rounded-lg border border-border object-contain"
               />
             ))}
           </div>
@@ -81,7 +81,7 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           <img 
             src={message.imageUrl} 
             alt="Uploaded" 
-            className="max-w-full rounded-lg mb-2 border border-border"
+            className="max-h-40 rounded-lg mb-2 border border-border object-contain"
           />
         )}
         
