@@ -205,6 +205,13 @@ const Index = () => {
           ? { ...c, messages: chatData.messages || c.messages }
           : c
       ));
+
+      // Scroll to bottom after loading messages
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 100);
     } catch (error) {
       console.error('Error loading chat:', error);
     }
@@ -381,6 +388,21 @@ const Index = () => {
         return;
       }
 
+      // Attach images to assistant response so they display alongside the answer
+      if (chatData.messages && images?.length) {
+        const imageUrls = images.map(img => URL.createObjectURL(img));
+        chatData.messages = chatData.messages.map((msg: Message, idx: number) => {
+          // Find the assistant message that follows the user's message with images
+          if (msg.role === 'assistant' && idx > 0) {
+            const prevMsg = chatData.messages[idx - 1];
+            if (prevMsg.role === 'user' && prevMsg.imageUrls) {
+              return { ...msg, imageUrls: prevMsg.imageUrls };
+            }
+          }
+          return msg;
+        });
+      }
+
       // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
       console.log('[AUTO-TITLE] Loaded chat data:', { 
         sessionId, 
@@ -554,9 +576,21 @@ const Index = () => {
               </div>
             ) : (
               <>
-                {messages.map((message, index) => (
-                  <ChatMessage key={index} message={message} />
-                ))}
+                {messages.map((message, index) => {
+                  // If assistant message, check if previous message has images
+                  let messageToDisplay = message;
+                  if (message.role === 'assistant' && index > 0) {
+                    const prevMessage = messages[index - 1];
+                    if (prevMessage.role === 'user' && (prevMessage.imageUrls || prevMessage.imageUrl)) {
+                      messageToDisplay = {
+                        ...message,
+                        imageUrls: prevMessage.imageUrls,
+                        imageUrl: prevMessage.imageUrl
+                      };
+                    }
+                  }
+                  return <ChatMessage key={index} message={messageToDisplay} />;
+                })}
                 {isLoading && (
                   <div className="flex justify-start mb-4">
                     <div className="bg-card border border-border rounded-2xl px-5 py-3">
