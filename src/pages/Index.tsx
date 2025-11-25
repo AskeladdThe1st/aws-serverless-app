@@ -100,6 +100,22 @@ const Index = () => {
     }
   }, [messages]);
 
+  // Keyboard shortcut: ESC to cancel loading
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isLoading) {
+        setIsLoading(false);
+        activeRequestRef.current = null;
+        toast({
+          title: 'Request cancelled',
+        });
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isLoading, toast]);
+
   const createNewChat = async () => {
     try {
       const userId = getOrCreateUserId();
@@ -286,47 +302,80 @@ const Index = () => {
           await solveProblem(userId, sessionId, text);
           backendResponse = null;
         } else {
-          // Classify the image first
-          const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          try {
+            // Classify the image first
+            const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'solve',
+                user_id: userId,
+                session_id: sessionId,
+                text: 'Classify this image: is it a graph or a math question? Answer with just "graph" or "not graph".',
+                image: imageBase64,
+              }),
+            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+            
+            const classificationText = classifyResponse?.analysis || '';
+            const isGraph = classificationText.toLowerCase().includes('graph') && 
+                           !classificationText.toLowerCase().includes('not graph');
+            
+            if (isGraph) {
+              // It's a graph -> send graph action
+              if (isManualMode && !graphImagePreview) {
+                setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
+              }
+              
+              const payload: any = {
+                action: "graph",
+                user_id: userId,
+                session_id: sessionId,
+                image: imageBase64,
+                manual_mode: isManualMode,
+              };
+              
+              if (text.trim()) payload.text = text;
+              
+              backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+            } else {
+              // Not a graph -> send solve action
+              const solvePayload: any = {
+                action: 'solve',
+                user_id: userId,
+                session_id: sessionId,
+                text: text || 'Solve this problem',
+                image: imageBase64,
+              };
+              
+              await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(solvePayload),
+              }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+              
+              backendResponse = null;
+            }
+          } catch (classifyError) {
+            console.error('Classification error, falling back to solve:', classifyError);
+            // Fallback to solve if classification fails
+            const solvePayload: any = {
               action: 'solve',
               user_id: userId,
               session_id: sessionId,
-              text: 'Classify this image: is it a graph or a math question? Answer with just "graph" or "not graph".',
+              text: text || 'Solve this problem',
               image: imageBase64,
-            }),
-          }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-          
-          const classificationText = classifyResponse?.analysis || '';
-          const isGraph = classificationText.toLowerCase().includes('graph') && 
-                         !classificationText.toLowerCase().includes('not graph');
-          
-          if (isGraph) {
-            // It's a graph -> send graph action
-            if (isManualMode && !graphImagePreview) {
-              setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
-            }
-            
-            const payload: any = {
-              action: "graph",
-              user_id: userId,
-              session_id: sessionId,
-              image: imageBase64,
-              manual_mode: isManualMode,
             };
             
-            if (text.trim()) payload.text = text;
-            
-            backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
+              body: JSON.stringify(solvePayload),
             }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-          } else {
-            // Not a graph -> send solve action
-            await solveProblem(userId, sessionId, text);
+            
             backendResponse = null;
           }
         }
