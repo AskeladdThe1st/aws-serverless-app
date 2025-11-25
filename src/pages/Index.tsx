@@ -246,6 +246,36 @@ const Index = () => {
     return title || 'New Chat';
   };
 
+  const handleManualModeChange = async (enabled: boolean) => {
+    try {
+      const userId = getOrCreateUserId();
+      const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
+      
+      await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          user_id: userId,
+          session_id: sessionId,
+          manual_mode: enabled,
+        }),
+      });
+      
+      setIsManualMode(enabled);
+      
+      toast({
+        title: enabled ? 'Manual mode enabled' : 'Manual mode disabled',
+      });
+    } catch (error) {
+      console.error('Error updating manual mode:', error);
+      toast({
+        title: 'Error updating settings',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleSend = async (text: string, images?: File[]) => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
@@ -351,7 +381,6 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               images: [imagesBase64[0]],
-              manual_mode: isManualMode,
             };
             
             if (text.trim()) payload.text = text;
@@ -662,7 +691,7 @@ const Index = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         manualMode={isManualMode}
-        onManualModeChange={setIsManualMode}
+        onManualModeChange={handleManualModeChange}
       />
     </div>
   );
