@@ -273,29 +273,63 @@ const Index = () => {
 
       // Route to correct backend action
       if (image) {
-        // Image upload -> use graph action with manualMode flag
         const imageBase64 = await fileToBase64(image);
         
-        // Store image preview for manual mode panel
-        if (isManualMode && !graphImagePreview) {
-          setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
+        // Check for derivative keywords in user text
+        const derivativeKeywords = ['derivative', 'd/dx', 'dp/dq', 'dy/dx', 'differentiate'];
+        const hasDerivativeKeyword = derivativeKeywords.some(keyword => 
+          text.toLowerCase().includes(keyword.toLowerCase())
+        );
+        
+        // If derivative keywords present, always route to solve
+        if (hasDerivativeKeyword) {
+          await solveProblem(userId, sessionId, text);
+          backendResponse = null;
+        } else {
+          // Classify the image first
+          const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'solve',
+              user_id: userId,
+              session_id: sessionId,
+              text: 'Classify this image: is it a graph or a math question? Answer with just "graph" or "not graph".',
+              image: imageBase64,
+            }),
+          }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+          
+          const classificationText = classifyResponse?.analysis || '';
+          const isGraph = classificationText.toLowerCase().includes('graph') && 
+                         !classificationText.toLowerCase().includes('not graph');
+          
+          if (isGraph) {
+            // It's a graph -> send graph action
+            if (isManualMode && !graphImagePreview) {
+              setGraphImagePreview(`data:image/jpeg;base64,${imageBase64}`);
+            }
+            
+            const payload: any = {
+              action: "graph",
+              user_id: userId,
+              session_id: sessionId,
+              image: imageBase64,
+              manual_mode: isManualMode,
+            };
+            
+            if (text.trim()) payload.text = text;
+            
+            backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+          } else {
+            // Not a graph -> send solve action
+            await solveProblem(userId, sessionId, text);
+            backendResponse = null;
+          }
         }
-        
-        const payload: any = {
-          action: "graph",
-          user_id: userId,
-          session_id: sessionId,
-          image: imageBase64,
-          manual_mode: isManualMode,
-        };
-        
-        if (text.trim()) payload.text = text;
-        
-        backendResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
       } else {
         // Text only -> use solve action only
         await solveProblem(userId, sessionId, text);
