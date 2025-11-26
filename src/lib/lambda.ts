@@ -97,6 +97,19 @@ export async function updateChatTitle(
   });
 }
 
+export async function updateManualMode(
+  sessionId: string,
+  userId: string,
+  enabled: boolean
+) {
+  return callLambda({
+    action: "update",
+    user_id: userId,
+    session_id: sessionId,
+    manual_mode: enabled,
+  });
+}
+
 export async function solveProblem(
   userId: string,
   sessionId: string,

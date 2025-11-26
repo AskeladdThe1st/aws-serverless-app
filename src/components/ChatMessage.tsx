@@ -63,6 +63,16 @@ export const ChatMessage = ({ message }: { message: Message }) => {
           </button>
         )}
         
+        {/* Display image preview from backend for clarification (before question) */}
+        {message.image_preview && (
+          <img 
+            src={`data:image/png;base64,${message.image_preview}`}
+            alt="Graph preview" 
+            className="rounded-lg mb-3 border border-border object-contain"
+            style={{ maxWidth: '300px', maxHeight: '300px', width: 'auto', height: 'auto' }}
+          />
+        )}
+        
         {/* Display multiple images if available - uniform 300px max dimensions */}
         {message.imageUrls && message.imageUrls.length > 0 && (
           <div className="flex gap-2 mb-3 overflow-x-auto pb-2">

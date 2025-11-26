@@ -4,7 +4,7 @@ import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
+import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, updateManualMode } from '@/lib/lambda';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -239,49 +239,24 @@ const Index = () => {
   };
 
   const handleManualModeChange = async (enabled: boolean) => {
-    try {
-      const userId = getOrCreateUserId();
-      const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
-      
-      // Backend updates manual_mode for non-CRUD actions at line 269-270
-      // Send a request that will update manual_mode then continue processing
-      const response = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'load',
-          user_id: userId,
-          session_id: sessionId,
-          manual_mode: enabled,
-        }),
-      });
-      
-      // Load action returns before updating manual_mode, so we need to send
-      // another request that reaches line 269. Use a dummy action that will update
-      // manual_mode then fail gracefully
-      await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: '__update_manual_mode',
-          user_id: userId,
-          session_id: sessionId,
-          manual_mode: enabled,
-        }),
-      }).catch(() => {}); // Ignore error - backend will return "unknown action" after updating
-      
+    const userId = getOrCreateUserId();
+    if (activeChatId) {
+      try {
+        await updateManualMode(activeChatId, userId, enabled);
+        setIsManualMode(enabled);
+        toast({
+          title: enabled ? 'Manual mode enabled' : 'Manual mode disabled',
+          description: enabled ? 'You will receive clarifying questions for graph analysis' : 'Graphs will be analyzed automatically',
+        });
+      } catch (error) {
+        console.error('Error updating manual mode:', error);
+        toast({
+          title: 'Failed to update manual mode',
+          variant: 'destructive',
+        });
+      }
+    } else {
       setIsManualMode(enabled);
-      
-      toast({
-        title: enabled ? 'Manual mode enabled' : 'Manual mode disabled',
-        description: enabled ? 'You will receive clarifying questions for graph analysis' : 'Graphs will be analyzed automatically',
-      });
-    } catch (error) {
-      console.error('Error updating manual mode:', error);
-      toast({
-        title: 'Error updating settings',
-        variant: 'destructive',
-      });
     }
   };
 
@@ -725,6 +700,15 @@ const Index = () => {
                       };
                     }
                   }
+                  
+                  // Attach clarification image preview to the last assistant message if awaiting clarification
+                  if (message.role === 'assistant' && index === messages.length - 1 && activeChat?.awaitingClarification && activeChat?.clarificationImagePreview) {
+                    messageToDisplay = {
+                      ...messageToDisplay,
+                      image_preview: activeChat.clarificationImagePreview
+                    };
+                  }
+                  
                   return <ChatMessage key={index} message={messageToDisplay} />;
                 })}
                 {isLoading && (
