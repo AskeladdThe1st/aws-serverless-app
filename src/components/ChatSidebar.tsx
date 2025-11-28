@@ -38,7 +38,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-muted hover:bg-muted/80 text-foreground"
+        className="fixed top-4 left-4 z-50 lg:hidden bg-muted hover:opacity-70 text-foreground transition-opacity"
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
@@ -68,7 +68,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                   onNewChat();
                   setIsOpen(false);
                 }}
-                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                className="flex-1 bg-primary hover:opacity-90 text-primary-foreground font-medium transition-opacity"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 New Chat
@@ -77,7 +77,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                 variant="ghost"
                 size="icon"
                 onClick={toggleCollapse}
-                className="hidden lg:flex text-muted-foreground hover:text-foreground hover:bg-muted flex-shrink-0"
+                className="hidden lg:flex text-muted-foreground hover:opacity-70 flex-shrink-0 transition-opacity"
               >
                 <ChevronLeft className="h-5 w-5" />
               </Button>
@@ -93,7 +93,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                         setIsOpen(false);
                       }}
                       size="icon"
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      className="bg-primary hover:opacity-90 text-primary-foreground transition-opacity"
                     >
                       <Plus className="h-5 w-5" />
                     </Button>
@@ -108,7 +108,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                       variant="ghost"
                       size="icon"
                       onClick={toggleCollapse}
-                      className="text-muted-foreground hover:text-foreground hover:bg-muted"
+                      className="text-muted-foreground hover:opacity-70 transition-opacity"
                     >
                       <ChevronRight className="h-5 w-5" />
                     </Button>
@@ -158,10 +158,10 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             {/* Delete Icon - visible on hover */}
                             <button
                               onClick={(e) => handleDeleteClick(e, chat.id)}
-                              className="flex-shrink-0 p-1 hover:bg-destructive/20 rounded transition-all opacity-0 group-hover:opacity-100"
+                              className="flex-shrink-0 p-1 hover:opacity-70 rounded transition-opacity opacity-0 group-hover:opacity-100"
                               aria-label="Delete chat"
                             >
-                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
+                              <Trash2 className="h-4 w-4 text-destructive" />
                             </button>
                           </>
                         )}
