@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
-import { SettingsPanel } from '@/components/SettingsPanel';
+import { SettingsDialog } from '@/components/SettingsDialog';
 import { useToast } from '@/hooks/use-toast';
-import { solveProblem, analyzeGraph, fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, updateManualMode } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -22,8 +22,13 @@ const Index = () => {
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
-  const [isManualMode, setIsManualMode] = useState(false);
+  const [mode, setMode] = useState<'auto' | 'hybrid'>('auto');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showMoreSteps, setShowMoreSteps] = useState(false);
+  const [conciseAnswers, setConciseAnswers] = useState(false);
+  const [sympyVerification, setSympyVerification] = useState(true);
+  const [inputValue, setInputValue] = useState('');
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
@@ -238,26 +243,8 @@ const Index = () => {
     return title || 'New Chat';
   };
 
-  const handleManualModeChange = async (enabled: boolean) => {
-    const userId = getOrCreateUserId();
-    if (activeChatId) {
-      try {
-        await updateManualMode(activeChatId, userId, enabled);
-        setIsManualMode(enabled);
-        toast({
-          title: enabled ? 'Manual mode enabled' : 'Manual mode disabled',
-          description: enabled ? 'You will receive clarifying questions for graph analysis' : 'Graphs will be analyzed automatically',
-        });
-      } catch (error) {
-        console.error('Error updating manual mode:', error);
-        toast({
-          title: 'Failed to update manual mode',
-          variant: 'destructive',
-        });
-      }
-    } else {
-      setIsManualMode(enabled);
-    }
+  const handleToolSelect = (text: string) => {
+    setInputValue(text);
   };
 
   const handleSend = async (text: string, images?: File[]) => {
@@ -279,6 +266,8 @@ const Index = () => {
     const currentChat = chatSessions.find(c => c.id === sessionId);
     const isRespondingToClarification = currentChat?.awaitingClarification && !images;
 
+    const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
+
     // Optimistically show user message immediately with all images
     const userMessage: Message = {
       role: 'user',
@@ -298,15 +287,17 @@ const Index = () => {
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+        await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'clarify_graph',
+            mode: mode,
+            model: selectedModel,
             user_id: userId,
             session_id: sessionId,
             text: text,
-            images: currentChat.clarificationImages, // Send all stored images
+            images: currentChat.clarificationImages,
           }),
         });
         
@@ -337,11 +328,13 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+          await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'solve',
+              mode: mode,
+              model: selectedModel,
               user_id: userId,
               session_id: sessionId,
               text: text || 'Solve this problem',
@@ -350,14 +343,16 @@ const Index = () => {
           });
         } else {
           // Use the new classify action
-          const classifyResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+          const classifyResponse = await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'classify',
+              mode: mode,
+              model: selectedModel,
               user_id: userId,
               session_id: sessionId,
-              images: [imagesBase64[0]], // Classify first image only
+              images: [imagesBase64[0]],
             }),
           }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
           
@@ -367,6 +362,8 @@ const Index = () => {
             // It's a graph -> send graph action with first image only
             const payload: any = {
               action: "graph",
+              mode: mode,
+              model: selectedModel,
               user_id: userId,
               session_id: sessionId,
               images: [imagesBase64[0]],
@@ -374,7 +371,7 @@ const Index = () => {
             
             if (text.trim()) payload.text = text;
             
-            const graphResponse = await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            const graphResponse = await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -384,7 +381,7 @@ const Index = () => {
               needs_clarification: graphResponse?.needs_clarification,
               has_question: !!graphResponse?.question,
               has_image_preview: !!graphResponse?.image_preview,
-              manual_mode: isManualMode
+              mode: mode
             });
             
             // Check if backend needs clarification
@@ -412,7 +409,7 @@ const Index = () => {
               // The backend already stored the clarification question in messages
             } else {
               // Store images for potential future clarification
-              if (isManualMode) {
+              if (mode === 'hybrid') {
                 setChatSessions(prev =>
                   prev.map(chat =>
                     chat.id === sessionId
@@ -424,11 +421,13 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await fetch('https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/', {
+            await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'solve',
+                mode: mode,
+                model: selectedModel,
                 user_id: userId,
                 session_id: sessionId,
                 text: text || 'Solve this problem',
@@ -438,8 +437,19 @@ const Index = () => {
           }
         }
       } else {
-        // Text only -> use solve action only
-        await solveProblem(userId, sessionId, text);
+        // Text only -> use solve action
+        await fetch(LAMBDA_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'solve',
+            mode: mode,
+            model: selectedModel,
+            user_id: userId,
+            session_id: sessionId,
+            text: text,
+          }),
+        });
       }
 
       // CRITICAL: Check if still on the same chat after backend call
@@ -462,7 +472,7 @@ const Index = () => {
       // Check if backend returned needs_clarification from the stored messages
       const lastMessage = chatData.messages?.[chatData.messages.length - 1];
       const lastAssistantMessage = chatData.messages?.slice().reverse().find(m => m.role === 'assistant');
-      const needsClarification = lastAssistantMessage?.content?.includes('?') && isManualMode;
+      const needsClarification = lastAssistantMessage?.content?.includes('?') && mode === 'hybrid';
       
       if (needsClarification) {
         // Set clarification state
@@ -621,6 +631,10 @@ const Index = () => {
     }
   };
 
+  // Check if this is the landing screen
+  const isLandingScreen = messages.length === 0;
+
+  // Convert chat sessions to sidebar format
   const chatsForSidebar: Chat[] = chatSessions.map(chat => ({
     id: chat.id,
     title: chat.title,
@@ -639,7 +653,8 @@ const Index = () => {
   }
 
   return (
-    <div className="flex w-full h-screen bg-background overflow-hidden">
+    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-background">
+      {/* Sidebar */}
       <ChatSidebar
         chats={chatsForSidebar}
         activeChat={activeChatId}
@@ -648,100 +663,91 @@ const Index = () => {
         onDeleteChat={deleteChatSession}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-lg">
-              <Calculator className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Calculus Agent</h1>
-              <p className="text-sm text-muted-foreground">Your personal math solver</p>
-            </div>
+      {/* Main chat area */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Header */}
+        <div className="bg-card border-b border-border px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-primary">
+            <Calculator className="h-6 w-6" />
+            <h1 className="text-lg font-semibold">Calculus Agent</h1>
           </div>
-          
-          {/* Settings icon in top-right */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-lg hover:bg-accent"
+            className="p-2 hover:bg-muted rounded-lg transition-colors"
             aria-label="Settings"
           >
-            <Settings className="h-5 w-5" />
+            <Settings className="h-5 w-5 text-muted-foreground" />
           </button>
-        </header>
+        </div>
 
-        <div
+        {/* Messages or Landing Screen */}
+        <div 
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-4"
+          className="flex-1 overflow-y-auto"
         >
-          <div className="max-w-3xl mx-auto">
-            {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-center">
+          {isLandingScreen ? (
+            <div className="flex flex-col items-center justify-center h-full p-8">
+              <div className="max-w-3xl w-full space-y-6 text-center">
                 <div className="space-y-3">
-                  <Calculator className="h-12 w-12 text-primary mx-auto opacity-50" />
-                  <h2 className="text-xl font-semibold text-foreground">How can I help with calculus today?</h2>
-                  <p className="text-sm text-muted-foreground max-w-md">
-                    Send a message or upload a graph image to get started.
+                  <h1 className="text-4xl md:text-5xl font-bold text-foreground">
+                    What do you want to solve today?
+                  </h1>
+                  <p className="text-lg text-muted-foreground">
+                    Upload a calculus problem, derivative question, or graph.
                   </p>
                 </div>
               </div>
-            ) : (
-              <>
-                {messages.map((message, index) => {
-                  // If assistant message, check if previous message has images
-                  let messageToDisplay = message;
-                  if (message.role === 'assistant' && index > 0) {
-                    const prevMessage = messages[index - 1];
-                    if (prevMessage.role === 'user' && (prevMessage.imageUrls || prevMessage.imageUrl)) {
-                      messageToDisplay = {
-                        ...message,
-                        imageUrls: prevMessage.imageUrls,
-                        imageUrl: prevMessage.imageUrl
-                      };
-                    }
-                  }
-                  
-                  // Attach clarification image preview to the last assistant message if awaiting clarification
-                  if (message.role === 'assistant' && index === messages.length - 1 && activeChat?.awaitingClarification && activeChat?.clarificationImagePreview) {
-                    messageToDisplay = {
-                      ...messageToDisplay,
-                      image_preview: activeChat.clarificationImagePreview
-                    };
-                  }
-                  
-                  return <ChatMessage key={index} message={messageToDisplay} />;
-                })}
-                {isLoading && (
-                  <div className="flex justify-start mb-4">
-                    <div className="bg-card border border-border rounded-2xl px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
-                        <span className="text-sm text-muted-foreground">Solving...</span>
-                      </div>
-                    </div>
+            </div>
+          ) : (
+            <div className="max-w-4xl mx-auto py-6 px-4">
+              {messages.map((msg, idx) => {
+                // Attach clarification image preview to the last assistant message if awaiting clarification
+                let messageToDisplay = msg;
+                if (msg.role === 'assistant' && idx === messages.length - 1 && activeChat?.awaitingClarification && activeChat?.clarificationImagePreview) {
+                  messageToDisplay = {
+                    ...messageToDisplay,
+                    image_preview: activeChat.clarificationImagePreview
+                  };
+                }
+                return <ChatMessage key={idx} message={messageToDisplay} />;
+              })}
+              {isLoading && (
+                <div className="flex justify-start mb-4">
+                  <div className="bg-muted rounded-2xl px-4 py-3 text-muted-foreground animate-pulse">
+                    Analyzing...
                   </div>
-                )}
-              </>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="border-t border-border px-4 py-4 bg-card">
-          <div className="max-w-3xl mx-auto">
-            <ChatInput onSend={handleSend} disabled={isLoading} />
-          </div>
-        </div>
+        {/* Input */}
+        <ChatInput 
+          onSend={handleSend} 
+          disabled={isLoading}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          mode={mode}
+          onModeChange={setMode}
+          onToolSelect={handleToolSelect}
+          inputValue={inputValue}
+          onInputChange={setInputValue}
+        />
       </div>
 
-      <SettingsPanel
+      {/* Settings Dialog */}
+      <SettingsDialog
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        manualMode={isManualMode}
-        onManualModeChange={handleManualModeChange}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+        showMoreSteps={showMoreSteps}
+        onShowMoreStepsChange={setShowMoreSteps}
+        conciseAnswers={conciseAnswers}
+        onConciseAnswersChange={setConciseAnswers}
+        sympyVerification={sympyVerification}
+        onSympyVerificationChange={setSympyVerification}
       />
     </div>
   );
