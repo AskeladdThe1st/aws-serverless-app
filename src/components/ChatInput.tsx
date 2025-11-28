@@ -206,7 +206,7 @@ export const ChatInput = ({
           onChange={handleFileChange}
         />
 
-        <div className="flex flex-col gap-2 bg-input rounded-xl px-4 py-3 border border-border">
+        <div className="flex flex-col gap-2 bg-card rounded-2xl px-4 py-3 border border-border shadow-lg">
           <textarea
             ref={textareaRef}
             value={input}
@@ -249,7 +249,7 @@ export const ChatInput = ({
               <button
                 onClick={handleSubmit}
                 disabled={disabled || (!input.trim() && selectedImages.length === 0)}
-                className="shrink-0 h-9 w-9 rounded-full bg-primary hover:opacity-90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-opacity"
+                className="shrink-0 h-9 w-9 rounded-full bg-primary hover:opacity-90 text-primary-foreground disabled:opacity-30 flex items-center justify-center transition-opacity"
                 aria-label="Send message"
               >
                 <Send className="h-4 w-4" />

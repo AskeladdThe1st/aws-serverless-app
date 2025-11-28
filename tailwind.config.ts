@@ -60,6 +60,14 @@ export default {
         "sidebar-bg": "hsl(var(--sidebar-bg))",
         "sidebar-border": "hsl(var(--sidebar-border))",
         "sidebar-hover": "hsl(var(--sidebar-hover))",
+        // Extended theme tokens
+        "bg-subtle": "hsl(var(--bg-subtle))",
+        "bg-elevated": "hsl(var(--bg-elevated))",
+        "bg-hover": "hsl(var(--bg-hover))",
+        "text-secondary": "hsl(var(--text-secondary))",
+        "text-muted": "hsl(var(--text-muted))",
+        "border-subtle": "hsl(var(--border-subtle))",
+        "border-strong": "hsl(var(--border-strong))",
       },
       borderRadius: {
         lg: "var(--radius)",
