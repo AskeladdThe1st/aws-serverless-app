@@ -8,89 +8,81 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Julius AI Light Mode */
-    --background: 32 7% 98%;
-    --foreground: 24 10% 10%;
+    /* Light Mode - Clean OpenAI Style */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 24 10% 10%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 24 10% 10%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 38 92% 50%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 32 6% 90%;
-    --secondary-foreground: 24 10% 10%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 32 6% 90%;
-    --muted-foreground: 24 10% 46%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
 
-    --accent: 38 92% 50%;
+    --accent: 217 91% 60%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 32 6% 90%;
-    --input: 32 6% 90%;
-    --ring: 38 92% 50%;
+    --border: 0 0% 90%;
+    --input: 0 0% 25%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
-    --chat-bubble-user: 38 92% 95%;
+    --chat-bubble-user: 0 0% 96%;
     --chat-bubble-assistant: 0 0% 98%;
     
     --sidebar-bg: 0 0% 100%;
-    --sidebar-border: 32 6% 90%;
-    --sidebar-hover: 32 6% 95%;
-    
-    --gradient-primary: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(38 92% 60%) 100%);
-    --shadow-glow: 0 0 40px hsl(38 92% 50% / 0.15);
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --sidebar-border: 0 0% 90%;
+    --sidebar-hover: 0 0% 96%;
   }
 
   .dark {
-    /* Julius AI Dark Mode */
-    --background: 24 10% 5%;
-    --foreground: 32 7% 98%;
+    /* Dark Mode - OpenAI Clean Style */
+    --background: 0 0% 13%;
+    --foreground: 0 0% 95%;
 
-    --card: 24 10% 8%;
-    --card-foreground: 32 7% 98%;
+    --card: 0 0% 16%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 24 10% 8%;
-    --popover-foreground: 32 7% 98%;
+    --popover: 0 0% 16%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 38 92% 50%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 24 10% 12%;
-    --secondary-foreground: 32 7% 98%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 95%;
 
-    --muted: 24 10% 25%;
-    --muted-foreground: 24 5% 64%;
+    --muted: 0 0% 25%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 38 92% 50%;
+    --accent: 217 91% 60%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 24 10% 15%;
-    --input: 24 10% 12%;
-    --ring: 38 92% 50%;
+    --border: 0 0% 25%;
+    --input: 0 0% 25%;
+    --ring: 217 91% 60%;
 
-    --chat-bubble-user: 24 10% 12%;
-    --chat-bubble-assistant: 24 10% 8%;
+    --chat-bubble-user: 0 0% 18%;
+    --chat-bubble-assistant: 0 0% 16%;
     
-    --sidebar-bg: 24 10% 5%;
-    --sidebar-border: 24 10% 15%;
-    --sidebar-hover: 24 10% 12%;
-    
-    --gradient-primary: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(38 92% 60%) 100%);
-    --shadow-glow: 0 0 40px hsl(38 92% 50% / 0.15);
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --sidebar-bg: 0 0% 13%;
+    --sidebar-border: 0 0% 25%;
+    --sidebar-hover: 0 0% 18%;
   }
 }
 

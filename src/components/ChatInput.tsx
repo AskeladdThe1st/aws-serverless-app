@@ -164,7 +164,7 @@ export const ChatInput = ({
   };
 
   return (
-    <div className="bg-card border-t border-border p-4 md:p-6">
+    <div className="w-full p-4 md:p-6">
       {previewUrls.length > 0 && (
         <div className="mb-3 max-w-4xl mx-auto flex flex-wrap gap-2">
           {previewUrls.map((url, index) => (
@@ -177,7 +177,7 @@ export const ChatInput = ({
                 />
               </div>
               <button
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-sm"
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:opacity-80 text-destructive-foreground flex items-center justify-center shadow-sm transition-opacity"
                 onClick={() => removeImage(index)}
               >
                 <X className="h-3 w-3" />
@@ -206,7 +206,7 @@ export const ChatInput = ({
           onChange={handleFileChange}
         />
 
-        <div className="flex flex-col gap-2 bg-input rounded-xl px-4 py-3 border border-border focus-within:border-ring transition-colors">
+        <div className="flex flex-col gap-2 bg-input rounded-xl px-4 py-3 border border-border">
           <textarea
             ref={textareaRef}
             value={input}
@@ -224,7 +224,7 @@ export const ChatInput = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={disabled}
-                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1.5"
+                className="text-muted-foreground hover:opacity-70 transition-opacity disabled:opacity-50 disabled:pointer-events-none p-1.5"
                 aria-label="Attach file"
               >
                 <Paperclip className="h-4 w-4" />
@@ -234,7 +234,7 @@ export const ChatInput = ({
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
                 disabled={disabled}
-                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1.5 md:hidden"
+                className="text-muted-foreground hover:opacity-70 transition-opacity disabled:opacity-50 disabled:pointer-events-none p-1.5 md:hidden"
                 aria-label="Take photo"
               >
                 <Camera className="h-4 w-4" />
@@ -249,7 +249,7 @@ export const ChatInput = ({
               <button
                 onClick={handleSubmit}
                 disabled={disabled || (!input.trim() && selectedImages.length === 0)}
-                className="shrink-0 h-9 w-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-colors"
+                className="shrink-0 h-9 w-9 rounded-full bg-primary hover:opacity-90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-opacity"
                 aria-label="Send message"
               >
                 <Send className="h-4 w-4" />

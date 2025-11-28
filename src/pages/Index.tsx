@@ -673,7 +673,7 @@ const Index = () => {
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
+            className="p-2 hover:opacity-70 rounded-lg transition-opacity"
             aria-label="Settings"
           >
             <Settings className="h-5 w-5 text-muted-foreground" />
@@ -682,15 +682,12 @@ const Index = () => {
 
         {isLandingScreen ? (
           /* Landing Screen - Centered Input */
-          <div className="flex-1 flex flex-col items-center justify-center px-4 pb-20">
-            <div className="w-full max-w-3xl space-y-8">
-              <div className="text-center space-y-3">
-                <h1 className="text-4xl md:text-5xl font-bold text-foreground">
-                  What do you want to solve today?
+          <div className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
+            <div className="w-full max-w-4xl space-y-12">
+              <div className="text-center">
+                <h1 className="text-4xl md:text-5xl font-semibold text-foreground">
+                  What do you want to analyze today?
                 </h1>
-                <p className="text-lg text-muted-foreground">
-                  Upload a calculus problem, derivative question, or graph.
-                </p>
               </div>
 
               <ChatInput 

@@ -47,7 +47,7 @@ export const SettingsDialog = ({
             <div className="flex gap-3">
               <Button
                 variant={theme === 'light' ? 'default' : 'outline'}
-                className={theme === 'light' ? 'flex-1 bg-primary hover:bg-primary/90 text-primary-foreground' : 'flex-1'}
+                className="flex-1"
                 onClick={() => setTheme('light')}
               >
                 <Sun className="h-4 w-4 mr-2" />
@@ -55,7 +55,7 @@ export const SettingsDialog = ({
               </Button>
               <Button
                 variant={theme === 'dark' ? 'default' : 'outline'}
-                className={theme === 'dark' ? 'flex-1 bg-primary hover:bg-primary/90 text-primary-foreground' : 'flex-1'}
+                className="flex-1"
                 onClick={() => setTheme('dark')}
               >
                 <Moon className="h-4 w-4 mr-2" />
