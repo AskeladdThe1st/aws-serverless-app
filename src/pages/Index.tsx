@@ -665,18 +665,18 @@ const Index = () => {
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Header */}
-        <div className="bg-card border-b border-border px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-primary">
+        {/* Header - Transparent */}
+        <div className="bg-transparent px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-foreground">
             <Calculator className="h-6 w-6" />
             <h1 className="text-lg font-semibold">Calculus Agent</h1>
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 hover:opacity-70 rounded-lg transition-opacity"
+            className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
             aria-label="Settings"
           >
-            <Settings className="h-5 w-5 text-muted-foreground" />
+            <Settings className="h-5 w-5" />
           </button>
         </div>
 
