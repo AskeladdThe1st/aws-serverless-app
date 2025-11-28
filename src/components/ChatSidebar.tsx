@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Trash2, MessageSquare, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { UserAvatar } from './UserAvatar';
 
 export interface Chat {
   id: string;
@@ -129,7 +130,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
               Chat History
             </div>
           )}
-          <ScrollArea className={cn("h-[calc(100vh-140px)]", isCollapsed && "h-[calc(100vh-180px)]")}>
+          <ScrollArea className={cn("h-[calc(100vh-200px)]", isCollapsed && "h-[calc(100vh-240px)]")}>
             <div className={cn("pb-4", isCollapsed ? "px-1" : "px-2")}>
               <TooltipProvider>
                 {chats.map((chat) => (
@@ -181,6 +182,14 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
               </TooltipProvider>
             </div>
           </ScrollArea>
+        </div>
+
+        {/* User Avatar at Bottom */}
+        <div className={cn(
+          "p-4 border-t border-sidebar-border",
+          isCollapsed && "flex justify-center"
+        )}>
+          <UserAvatar isCollapsed={isCollapsed} />
         </div>
       </aside>
     </>
