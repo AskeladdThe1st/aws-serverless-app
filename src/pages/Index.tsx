@@ -680,60 +680,76 @@ const Index = () => {
           </button>
         </div>
 
-        {/* Messages or Landing Screen */}
-        <div 
-          ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto"
-        >
-          {isLandingScreen ? (
-            <div className="flex flex-col items-center justify-center h-full p-8">
-              <div className="max-w-3xl w-full space-y-6 text-center">
-                <div className="space-y-3">
-                  <h1 className="text-4xl md:text-5xl font-bold text-foreground">
-                    What do you want to solve today?
-                  </h1>
-                  <p className="text-lg text-muted-foreground">
-                    Upload a calculus problem, derivative question, or graph.
-                  </p>
-                </div>
+        {isLandingScreen ? (
+          /* Landing Screen - Centered Input */
+          <div className="flex-1 flex flex-col items-center justify-center px-4 pb-20">
+            <div className="w-full max-w-3xl space-y-8">
+              <div className="text-center space-y-3">
+                <h1 className="text-4xl md:text-5xl font-bold text-foreground">
+                  What do you want to solve today?
+                </h1>
+                <p className="text-lg text-muted-foreground">
+                  Upload a calculus problem, derivative question, or graph.
+                </p>
+              </div>
+
+              <ChatInput 
+                onSend={handleSend} 
+                disabled={isLoading}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+                mode={mode}
+                onModeChange={setMode}
+                onToolSelect={handleToolSelect}
+                inputValue={inputValue}
+                onInputChange={setInputValue}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Chat Mode */
+          <>
+            {/* Messages */}
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 overflow-y-auto"
+            >
+              <div className="max-w-4xl mx-auto py-6 px-4">
+                {messages.map((msg, idx) => {
+                  // Attach clarification image preview to the last assistant message if awaiting clarification
+                  let messageToDisplay = msg;
+                  if (msg.role === 'assistant' && idx === messages.length - 1 && activeChat?.awaitingClarification && activeChat?.clarificationImagePreview) {
+                    messageToDisplay = {
+                      ...messageToDisplay,
+                      image_preview: activeChat.clarificationImagePreview
+                    };
+                  }
+                  return <ChatMessage key={idx} message={messageToDisplay} />;
+                })}
+                {isLoading && (
+                  <div className="flex justify-start mb-4">
+                    <div className="bg-muted rounded-2xl px-4 py-3 text-muted-foreground animate-pulse">
+                      Analyzing...
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          ) : (
-            <div className="max-w-4xl mx-auto py-6 px-4">
-              {messages.map((msg, idx) => {
-                // Attach clarification image preview to the last assistant message if awaiting clarification
-                let messageToDisplay = msg;
-                if (msg.role === 'assistant' && idx === messages.length - 1 && activeChat?.awaitingClarification && activeChat?.clarificationImagePreview) {
-                  messageToDisplay = {
-                    ...messageToDisplay,
-                    image_preview: activeChat.clarificationImagePreview
-                  };
-                }
-                return <ChatMessage key={idx} message={messageToDisplay} />;
-              })}
-              {isLoading && (
-                <div className="flex justify-start mb-4">
-                  <div className="bg-muted rounded-2xl px-4 py-3 text-muted-foreground animate-pulse">
-                    Analyzing...
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* Input */}
-        <ChatInput 
-          onSend={handleSend} 
-          disabled={isLoading}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          mode={mode}
-          onModeChange={setMode}
-          onToolSelect={handleToolSelect}
-          inputValue={inputValue}
-          onInputChange={setInputValue}
-        />
+            {/* Input at bottom during chat */}
+            <ChatInput 
+              onSend={handleSend} 
+              disabled={isLoading}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              mode={mode}
+              onModeChange={setMode}
+              onToolSelect={handleToolSelect}
+              inputValue={inputValue}
+              onInputChange={setInputValue}
+            />
+          </>
+        )}
       </div>
 
       {/* Settings Dialog */}

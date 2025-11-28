@@ -8,46 +8,88 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* MathGPT-inspired color scheme */
-    --background: 217 13% 6%;
-    --foreground: 210 11% 91%;
+    /* Julius AI Light Mode */
+    --background: 32 7% 98%;
+    --foreground: 24 10% 10%;
 
-    --card: 220 13% 8%;
-    --card-foreground: 210 11% 91%;
+    --card: 0 0% 100%;
+    --card-foreground: 24 10% 10%;
 
-    --popover: 220 13% 8%;
-    --popover-foreground: 210 11% 91%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 10% 10%;
 
-    --primary: 217 91% 60%;
+    --primary: 38 92% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 13% 10%;
-    --secondary-foreground: 210 11% 91%;
+    --secondary: 32 6% 90%;
+    --secondary-foreground: 24 10% 10%;
 
-    --muted: 220 9% 46%;
-    --muted-foreground: 220 9% 61%;
+    --muted: 32 6% 90%;
+    --muted-foreground: 24 10% 46%;
 
-    --accent: 217 91% 60%;
+    --accent: 38 92% 50%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 63% 55%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 12%;
-    --input: 220 13% 9%;
-    --ring: 217 91% 60%;
+    --border: 32 6% 90%;
+    --input: 32 6% 90%;
+    --ring: 38 92% 50%;
 
     --radius: 0.75rem;
 
-    --chat-bubble-user: 220 13% 10%;
-    --chat-bubble-assistant: 220 13% 8%;
+    --chat-bubble-user: 38 92% 95%;
+    --chat-bubble-assistant: 0 0% 98%;
     
-    --sidebar-bg: 220 13% 6%;
-    --sidebar-border: 220 13% 12%;
-    --sidebar-hover: 220 13% 10%;
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-border: 32 6% 90%;
+    --sidebar-hover: 32 6% 95%;
     
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(217 91% 65%) 100%);
-    --shadow-glow: 0 0 40px hsl(217 91% 60% / 0.15);
+    --gradient-primary: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(38 92% 60%) 100%);
+    --shadow-glow: 0 0 40px hsl(38 92% 50% / 0.15);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    /* Julius AI Dark Mode */
+    --background: 24 10% 5%;
+    --foreground: 32 7% 98%;
+
+    --card: 24 10% 8%;
+    --card-foreground: 32 7% 98%;
+
+    --popover: 24 10% 8%;
+    --popover-foreground: 32 7% 98%;
+
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 24 10% 12%;
+    --secondary-foreground: 32 7% 98%;
+
+    --muted: 24 10% 25%;
+    --muted-foreground: 24 5% 64%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 24 10% 15%;
+    --input: 24 10% 12%;
+    --ring: 38 92% 50%;
+
+    --chat-bubble-user: 24 10% 12%;
+    --chat-bubble-assistant: 24 10% 8%;
+    
+    --sidebar-bg: 24 10% 5%;
+    --sidebar-border: 24 10% 15%;
+    --sidebar-hover: 24 10% 12%;
+    
+    --gradient-primary: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(38 92% 60%) 100%);
+    --shadow-glow: 0 0 40px hsl(38 92% 50% / 0.15);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
