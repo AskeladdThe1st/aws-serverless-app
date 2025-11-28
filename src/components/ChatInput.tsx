@@ -1,14 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Send, Paperclip, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ModelSelector } from './ModelSelector';
+import { ModeSelector } from './ModeSelector';
+import { ToolsMenu } from './ToolsMenu';
 
 interface ChatInputProps {
   onSend: (text: string, images?: File[]) => void;
   disabled?: boolean;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  mode: 'auto' | 'hybrid';
+  onModeChange: (mode: 'auto' | 'hybrid') => void;
+  onToolSelect: (text: string) => void;
+  inputValue?: string;
+  onInputChange?: (value: string) => void;
 }
 
-export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
+export const ChatInput = ({ 
+  onSend, 
+  disabled, 
+  selectedModel, 
+  onModelChange,
+  mode,
+  onModeChange,
+  onToolSelect,
+  inputValue,
+  onInputChange
+}: ChatInputProps) => {
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -16,6 +35,13 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  // Sync external input value
+  useEffect(() => {
+    if (inputValue !== undefined) {
+      setInput(inputValue);
+    }
+  }, [inputValue]);
 
   // Handle paste events for images
   useEffect(() => {
@@ -106,7 +132,9 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
     if ((!input.trim() && selectedImages.length === 0) || disabled) return;
 
     onSend(input, selectedImages.length > 0 ? selectedImages : undefined);
-    setInput('');
+    const newValue = '';
+    setInput(newValue);
+    if (onInputChange) onInputChange(newValue);
     clearImages();
   };
 
@@ -117,22 +145,42 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
     }
   };
 
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (onInputChange) onInputChange(value);
+  };
+
+  const handleToolSelection = (text: string) => {
+    const newValue = text;
+    setInput(newValue);
+    if (onInputChange) onInputChange(newValue);
+    // Auto-focus and place cursor at the end
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newValue.length, newValue.length);
+      }
+    }, 0);
+  };
+
   return (
     <div className="bg-card border-t border-border p-4 md:p-6">
       {previewUrls.length > 0 && (
         <div className="mb-3 max-w-4xl mx-auto flex flex-wrap gap-2">
           {previewUrls.map((url, index) => (
-            <div key={index} className="relative inline-block">
-              <img
-                src={url}
-                alt={`Preview ${index + 1}`}
-                className="max-h-32 rounded-xl border border-border"
-              />
+            <div key={index} className="relative">
+              <div className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-muted">
+                <img
+                  src={url}
+                  alt={`Preview ${index + 1}`}
+                  className="w-full h-full object-contain"
+                />
+              </div>
               <button
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center"
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-sm"
                 onClick={() => removeImage(index)}
               >
-                <X className="h-4 w-4" />
+                <X className="h-3 w-3" />
               </button>
             </div>
           ))}
@@ -158,46 +206,56 @@ export const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           onChange={handleFileChange}
         />
 
-        <div className="flex items-center gap-3 bg-input rounded-xl px-5 py-4 border border-border focus-within:border-ring transition-colors">
+        <div className="flex flex-col gap-2 bg-input rounded-xl px-4 py-3 border border-border focus-within:border-ring transition-colors">
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Message Calculus Agent (⌘K to focus, ⌘⏎ or ⏎ to send, ⌘V to paste images)"
+            placeholder="Ask anything about calculus..."
             className="flex-1 bg-transparent border-0 outline-none text-foreground placeholder:text-muted-foreground disabled:opacity-50 text-base resize-none min-h-[24px] max-h-[200px]"
             disabled={disabled}
             rows={1}
           />
 
-          <button
-            type="button"
-            onClick={() => cameraInputRef.current?.click()}
-            disabled={disabled}
-            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1 md:hidden"
-            aria-label="Take photo"
-          >
-            <Camera className="h-5 w-5" />
-          </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1.5"
+                aria-label="Attach file"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1"
-            aria-label="Attach file"
-          >
-            <Paperclip className="h-5 w-5" />
-          </button>
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={disabled}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none p-1.5 md:hidden"
+                aria-label="Take photo"
+              >
+                <Camera className="h-4 w-4" />
+              </button>
 
-          <button
-            onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && selectedImages.length === 0)}
-            className="shrink-0 h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-colors"
-            aria-label="Send message"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+              <ModeSelector value={mode} onValueChange={onModeChange} />
+              <ToolsMenu onSelectTool={handleToolSelection} />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ModelSelector value={selectedModel} onValueChange={onModelChange} variant="compact" />
+              <button
+                onClick={handleSubmit}
+                disabled={disabled || (!input.trim() && selectedImages.length === 0)}
+                className="shrink-0 h-9 w-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 flex items-center justify-center transition-colors"
+                aria-label="Send message"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
