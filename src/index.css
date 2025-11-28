@@ -3,105 +3,105 @@
 @tailwind utilities;
 
 /* 
-  Professional Theme System
+  Clean OpenAI-Style Theme System
   All colors MUST be HSL format for proper Tailwind integration
 */
 
 @layer base {
   :root {
-    /* Light Mode - Premium Soft Neutrals */
-    --background: 210 20% 98%;        /* #F8F9FB */
-    --foreground: 222 47% 11%;        /* #0F172A */
+    /* Light Mode - Clean Light Gray */
+    --background: 0 0% 97%;           /* #F7F7F7 - Very light gray */
+    --foreground: 0 0% 20%;           /* #333333 - Dark gray text */
 
-    --card: 0 0% 100%;                /* #FFFFFF */
-    --card-foreground: 222 47% 11%;   /* #0F172A */
+    --card: 0 0% 100%;                /* #FFFFFF - Pure white */
+    --card-foreground: 0 0% 20%;      /* #333333 */
 
     --popover: 0 0% 100%;             /* #FFFFFF */
-    --popover-foreground: 222 47% 11%; /* #0F172A */
+    --popover-foreground: 0 0% 20%;   /* #333333 */
 
-    --primary: 239 84% 67%;           /* #6366F1 - Indigo accent */
-    --primary-foreground: 210 20% 98%; /* #F8F9FB */
+    --primary: 250 95% 63%;           /* #6366F1 - Blue/purple accent */
+    --primary-foreground: 0 0% 100%;  /* #FFFFFF */
 
-    --secondary: 220 13% 95%;         /* #F1F2F4 */
-    --secondary-foreground: 222 47% 11%; /* #0F172A */
+    --secondary: 0 0% 96%;            /* #F5F5F5 */
+    --secondary-foreground: 0 0% 20%; /* #333333 */
 
-    --muted: 220 13% 95%;             /* #F1F2F4 */
-    --muted-foreground: 215 16% 47%;  /* #64748B */
+    --muted: 0 0% 94%;                /* #F0F0F0 */
+    --muted-foreground: 0 0% 45%;     /* #737373 */
 
-    --accent: 239 84% 67%;            /* #6366F1 */
-    --accent-foreground: 210 20% 98%; /* #F8F9FB */
+    --accent: 250 95% 63%;            /* #6366F1 */
+    --accent-foreground: 0 0% 100%;   /* #FFFFFF */
 
     --destructive: 0 84% 60%;         /* #EF4444 */
     --destructive-foreground: 0 0% 100%; /* #FFFFFF */
 
-    --border: 220 13% 91%;            /* #E2E4E9 */
-    --input: 220 13% 91%;             /* #E2E4E9 */
-    --ring: 239 84% 67%;              /* #6366F1 */
+    --border: 0 0% 90%;               /* #E5E5E5 */
+    --input: 0 0% 90%;                /* #E5E5E5 */
+    --ring: 250 95% 63%;              /* #6366F1 */
 
     --radius: 1rem;
 
-    --chat-bubble-user: 220 13% 95%;     /* #F1F2F4 */
-    --chat-bubble-assistant: 0 0% 100%;  /* #FFFFFF */
+    --chat-bubble-user: 0 0% 96%;     /* #F5F5F5 */
+    --chat-bubble-assistant: 0 0% 100%; /* #FFFFFF */
     
-    --sidebar-bg: 210 20% 98%;        /* #F8F9FB */
-    --sidebar-border: 220 13% 91%;    /* #E2E4E9 */
-    --sidebar-hover: 220 13% 95%;     /* #F1F2F4 */
+    --sidebar-bg: 0 0% 97%;           /* #F7F7F7 */
+    --sidebar-border: 0 0% 90%;       /* #E5E5E5 */
+    --sidebar-hover: 0 0% 94%;        /* #F0F0F0 */
 
     /* Extended Theme Tokens */
-    --bg-subtle: 220 13% 95%;         /* #F1F2F4 */
+    --bg-subtle: 0 0% 96%;            /* #F5F5F5 */
     --bg-elevated: 0 0% 100%;         /* #FFFFFF */
-    --bg-hover: 220 13% 92%;          /* #E8EAED */
-    --text-secondary: 215 20% 65%;    /* #94A3B8 */
-    --text-muted: 215 16% 47%;        /* #64748B */
-    --border-subtle: 220 13% 91%;     /* #E2E4E9 */
-    --border-strong: 215 16% 47%;     /* #64748B */
+    --bg-hover: 0 0% 94%;             /* #F0F0F0 */
+    --text-secondary: 0 0% 40%;       /* #666666 */
+    --text-muted: 0 0% 45%;           /* #737373 */
+    --border-subtle: 0 0% 90%;        /* #E5E5E5 */
+    --border-strong: 0 0% 70%;        /* #B3B3B3 */
   }
 
   .dark {
-    /* Dark Mode - Deep Premium Slate */
-    --background: 222 47% 4%;         /* #020617 */
-    --foreground: 210 20% 98%;        /* #F9FAFB */
+    /* Dark Mode - Clean Dark Charcoal */
+    --background: 0 0% 13%;           /* #212121 - Dark charcoal */
+    --foreground: 0 0% 95%;           /* #F2F2F2 - Light gray text */
 
-    --card: 222 47% 4%;               /* #020617 */
-    --card-foreground: 210 20% 98%;   /* #F9FAFB */
+    --card: 0 0% 16%;                 /* #292929 - Slightly lighter */
+    --card-foreground: 0 0% 95%;      /* #F2F2F2 */
 
-    --popover: 217 33% 7%;            /* #0B1120 */
-    --popover-foreground: 210 20% 98%; /* #F9FAFB */
+    --popover: 0 0% 16%;              /* #292929 */
+    --popover-foreground: 0 0% 95%;   /* #F2F2F2 */
 
-    --primary: 239 84% 67%;           /* #6366F1 - Indigo accent */
-    --primary-foreground: 210 20% 98%; /* #F9FAFB */
+    --primary: 250 95% 63%;           /* #6366F1 - Blue/purple accent */
+    --primary-foreground: 0 0% 100%;  /* #FFFFFF */
 
-    --secondary: 217 33% 7%;          /* #0B1120 */
-    --secondary-foreground: 210 20% 98%; /* #F9FAFB */
+    --secondary: 0 0% 18%;            /* #2E2E2E */
+    --secondary-foreground: 0 0% 95%; /* #F2F2F2 */
 
-    --muted: 215 25% 17%;             /* #1E293B */
-    --muted-foreground: 218 11% 65%;  /* #9CA3AF */
+    --muted: 0 0% 25%;                /* #404040 */
+    --muted-foreground: 0 0% 60%;     /* #999999 */
 
-    --accent: 239 84% 67%;            /* #6366F1 */
-    --accent-foreground: 210 20% 98%; /* #F9FAFB */
+    --accent: 250 95% 63%;            /* #6366F1 */
+    --accent-foreground: 0 0% 100%;   /* #FFFFFF */
 
     --destructive: 0 84% 60%;         /* #EF4444 */
-    --destructive-foreground: 210 20% 98%; /* #F9FAFB */
+    --destructive-foreground: 0 0% 100%; /* #FFFFFF */
 
-    --border: 215 25% 17%;            /* #1E293B */
-    --input: 217 33% 7%;              /* #0B1120 */
-    --ring: 239 84% 67%;              /* #6366F1 */
+    --border: 0 0% 25%;               /* #404040 */
+    --input: 0 0% 25%;                /* #404040 */
+    --ring: 250 95% 63%;              /* #6366F1 */
 
-    --chat-bubble-user: 217 33% 7%;      /* #0B1120 */
-    --chat-bubble-assistant: 222 47% 4%; /* #020617 */
+    --chat-bubble-user: 0 0% 18%;     /* #2E2E2E */
+    --chat-bubble-assistant: 0 0% 16%; /* #292929 */
     
-    --sidebar-bg: 222 47% 4%;         /* #020617 */
-    --sidebar-border: 215 25% 17%;    /* #1E293B */
-    --sidebar-hover: 217 33% 7%;      /* #0B1120 */
+    --sidebar-bg: 0 0% 13%;           /* #212121 */
+    --sidebar-border: 0 0% 25%;       /* #404040 */
+    --sidebar-hover: 0 0% 18%;        /* #2E2E2E */
 
     /* Extended Theme Tokens */
-    --bg-subtle: 217 33% 7%;          /* #0B1120 */
-    --bg-elevated: 222 47% 4%;        /* #020617 */
-    --bg-hover: 217 33% 7%;           /* #0B1120 */
-    --text-secondary: 220 9% 90%;     /* #E5E7EB */
-    --text-muted: 218 11% 65%;        /* #9CA3AF */
-    --border-subtle: 215 25% 17%;     /* #1E293B */
-    --border-strong: 215 20% 27%;     /* #334155 */
+    --bg-subtle: 0 0% 18%;            /* #2E2E2E */
+    --bg-elevated: 0 0% 16%;          /* #292929 */
+    --bg-hover: 0 0% 20%;             /* #333333 */
+    --text-secondary: 0 0% 75%;       /* #BFBFBF */
+    --text-muted: 0 0% 60%;           /* #999999 */
+    --border-subtle: 0 0% 25%;        /* #404040 */
+    --border-strong: 0 0% 35%;        /* #595959 */
   }
 }
 
