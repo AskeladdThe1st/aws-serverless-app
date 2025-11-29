@@ -15,6 +15,7 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, signup, loginWithGoogle } = useAuth();
   const { toast } = useToast();
@@ -25,12 +26,13 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
 
     try {
       if (isSignUp) {
-        await signup(email, password);
+        await signup(email, password, username);
         toast({
           title: 'Account created',
           description: 'Please check your email to verify your account.',
         });
         setIsSignUp(false);
+        setUsername('');
       } else {
         await login(email, password);
         toast({
@@ -40,6 +42,7 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
         onClose();
       }
     } catch (error: any) {
+      console.error('Authentication error:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -50,8 +53,17 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    loginWithGoogle();
+  const handleGoogleSignIn = async () => {
+    try {
+      await loginWithGoogle();
+    } catch (error: any) {
+      console.error('Google sign-in error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Google Sign-In Failed',
+        description: 'Please check your AWS Cognito configuration. The app client may require a client secret to be removed.',
+      });
+    }
   };
 
   return (
@@ -112,6 +124,21 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
                 className="bg-background border-border text-foreground"
               />
             </div>
+
+            {isSignUp && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="username" className="text-foreground">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  className="bg-background border-border text-foreground"
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="text-foreground">Password</Label>
