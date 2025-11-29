@@ -6,7 +6,7 @@ const amplifyConfig = {
       // Region is required so tokens can be fetched/stored correctly
       region: "us-east-1",
       userPoolId: "us-east-1_5HSt2LTPo",
-      userPoolClientId: "5qjonso3988l4kbf9fn9909slm",
+      userPoolClientId: "20ink54fvlk7a5mgcp0n95ikad",
       // Persist tokens in local storage to avoid third-party cookie blocking
       loginWith: {
         oauth: {
