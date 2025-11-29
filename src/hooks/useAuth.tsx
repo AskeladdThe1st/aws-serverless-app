@@ -5,6 +5,7 @@ import { Hub } from 'aws-amplify/utils';
 interface User {
   email: string;
   name?: string;
+  username?: string;
   picture?: string;
   isPremium: boolean;
 }
@@ -13,14 +14,14 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, username?: string) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEVELOPER_EMAIL = 'developer@example.com'; // Replace with your actual developer email
+const DEVELOPER_EMAIL = 'experiencehub.yt@gmail.com';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -37,10 +38,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser({
         email,
         name: attributes.name || attributes.email?.split('@')[0],
+        username: attributes.preferred_username || attributes['custom:username'],
         picture: attributes.picture,
         isPremium,
       });
     } catch (error) {
+      console.error('Error loading user:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -50,16 +53,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     // Set up Hub listener for auth events (including OAuth)
     const hubListener = Hub.listen('auth', ({ payload }) => {
+      console.log('Auth event:', payload.event);
       switch (payload.event) {
         case 'signInWithRedirect':
         case 'signedIn':
+          console.log('User signed in, loading user data...');
           loadUser();
           break;
         case 'signedOut':
+          console.log('User signed out');
           setUser(null);
           break;
         case 'tokenRefresh':
+          console.log('Token refreshed');
           loadUser();
+          break;
+        case 'signInWithRedirect_failure':
+          console.error('OAuth sign-in failed:', payload.data);
+          setLoading(false);
           break;
       }
     });
@@ -75,14 +86,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await loadUser();
   };
 
-  const signup = async (email: string, password: string) => {
+  const signup = async (email: string, password: string, username?: string) => {
+    const userAttributes: Record<string, string> = {
+      email,
+    };
+    
+    if (username) {
+      userAttributes.preferred_username = username;
+    }
+
     await signUp({
       username: email,
       password,
       options: {
-        userAttributes: {
-          email,
-        },
+        userAttributes,
       },
     });
   };
@@ -93,7 +110,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loginWithGoogle = async () => {
-    await signInWithRedirect({ provider: 'Google' });
+    try {
+      console.log('Initiating Google sign-in...');
+      await signInWithRedirect({ provider: 'Google' });
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      throw error;
+    }
   };
 
   return (
