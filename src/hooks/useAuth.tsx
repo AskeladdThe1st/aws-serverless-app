@@ -3,8 +3,6 @@ import {
   signIn,
   signUp,
   signOut,
-  getCurrentUser,
-  fetchUserAttributes,
   signInWithRedirect,
   fetchAuthSession,
 } from "aws-amplify/auth";
@@ -37,23 +35,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const loadUser = async () => {
     try {
-      // Ensure session tokens are materialized before querying user
-      await fetchAuthSession();
-      const currentUser = await getCurrentUser();
-      const attributes = await fetchUserAttributes();
-
-      const email = attributes.email ?? "";
+      const session = await fetchAuthSession();
+      
+      // Check if we have valid tokens
+      if (!session.tokens?.idToken) {
+        throw new Error("No valid session");
+      }
+      
+      // Extract claims from ID token (no extra API call needed!)
+      const claims = session.tokens.idToken.payload;
+      
+      const email = (claims.email as string) ?? "";
       const name =
-        attributes.name ||
-        `${attributes.given_name || ""} ${attributes.family_name || ""}`.trim() ||
+        (claims.name as string) ||
+        `${(claims.given_name as string) || ""} ${(claims.family_name as string) || ""}`.trim() ||
         email.split("@")[0];
 
       setUser({
         email,
         name,
-        picture: attributes.picture,
-        given_name: attributes.given_name,
-        family_name: attributes.family_name,
+        picture: claims.picture as string,
+        given_name: claims.given_name as string,
+        family_name: claims.family_name as string,
         isPremium: email === DEVELOPER_EMAIL,
       });
     } catch (err) {
