@@ -3,12 +3,15 @@ import { Amplify } from "aws-amplify";
 const amplifyConfig = {
   Auth: {
     Cognito: {
+      // Region is required so tokens can be fetched/stored correctly
+      region: "us-east-1",
       userPoolId: "us-east-1_5HSt2LTPo",
       userPoolClientId: "5qjonso3988l4kbf9fn9909slm",
+      // Persist tokens in local storage to avoid third-party cookie blocking
       loginWith: {
         oauth: {
           domain: "us-east-15hst2ltpo.auth.us-east-1.amazoncognito.com",
-          scopes: ["openid", "email"],
+          scopes: ["openid", "email", "profile"],
           redirectSignIn: ["https://main.d28oxriiimrzcl.amplifyapp.com/", "http://localhost:3000/"],
           redirectSignOut: ["https://main.d28oxriiimrzcl.amplifyapp.com/", "http://localhost:3000/"],
           responseType: "code" as const,
