@@ -50,16 +50,8 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    try {
-      await loginWithGoogle();
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'An error occurred. Please try again.',
-      });
-    }
+  const handleGoogleSignIn = () => {
+    loginWithGoogle();
   };
 
   return (
