@@ -100,7 +100,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loginWithGoogle = async () => {
-    await signInWithRedirect({ provider: 'Google' });
+    try {
+      console.log('Starting Google sign-in redirect...');
+      await signInWithRedirect({ provider: 'Google' });
+    } catch (error) {
+      console.error('Google sign-in redirect failed:', error);
+    }
   };
 
   return (
