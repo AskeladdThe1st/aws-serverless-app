@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { signIn, signUp, signOut, getCurrentUser, fetchUserAttributes, signInWithRedirect } from 'aws-amplify/auth';
+import { Hub } from 'aws-amplify/utils';
 
 interface User {
   email: string;
@@ -47,7 +48,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Set up Hub listener for auth events (including OAuth)
+    const hubListener = Hub.listen('auth', ({ payload }) => {
+      switch (payload.event) {
+        case 'signInWithRedirect':
+        case 'signedIn':
+          loadUser();
+          break;
+        case 'signedOut':
+          setUser(null);
+          break;
+        case 'tokenRefresh':
+          loadUser();
+          break;
+      }
+    });
+
+    // Check for existing session
     loadUser();
+
+    return () => hubListener();
   }, []);
 
   const login = async (email: string, password: string) => {
