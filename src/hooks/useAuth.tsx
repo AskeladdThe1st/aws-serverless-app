@@ -67,18 +67,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("code") || params.has("state")) {
-      // Give Amplify a tick to store tokens after redirect
+      // Give Amplify a tick to store tokens after OAuth redirect
       setTimeout(() => {
         loadUser();
       }, 150);
     } else {
+      // Hydrate session on mount to detect already logged-in users
       loadUser();
     }
   }, []);
 
   const login = async (email: string, password: string) => {
-    await signIn({ username: email, password });
-    await loadUser();
+    try {
+      // Prevent double sign-in if user already authenticated
+      if (user) {
+        console.log("User already authenticated, skipping sign-in");
+        return;
+      }
+      await signIn({ username: email, password });
+      await loadUser();
+    } catch (error: any) {
+      // Handle case where user is already signed in
+      if (error.name === "UserAlreadyAuthenticatedException") {
+        console.log("User already authenticated, hydrating session");
+        await loadUser();
+      } else {
+        throw error;
+      }
+    }
   };
 
   const signup = async (email: string, password: string) => {
@@ -95,14 +111,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loginWithGoogle = async () => {
-    await signInWithRedirect({
-      provider: "Google",
-      ...({
-        extraQueryParams: {
-          prompt: "select_account",
-        },
-      } as any),
-    });
+    try {
+      // Prevent double sign-in if user already authenticated
+      if (user) {
+        console.log("User already authenticated, skipping Google sign-in");
+        return;
+      }
+      await signInWithRedirect({
+        provider: "Google",
+        ...({
+          extraQueryParams: {
+            prompt: "select_account",
+          },
+        } as any),
+      });
+    } catch (error: any) {
+      // Handle case where user is already signed in
+      if (error.name === "UserAlreadyAuthenticatedException") {
+        console.log("User already authenticated, hydrating session");
+        await loadUser();
+      } else {
+        console.error("Google sign-in error:", error);
+      }
+    }
   };
 
   return (
