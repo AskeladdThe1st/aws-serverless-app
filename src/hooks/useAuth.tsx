@@ -48,18 +48,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Load user on mount and after OAuth redirect
-    loadUser();
-    
-    // Set up a listener for when user completes OAuth flow
-    const handleOAuthComplete = () => {
-      console.log('Checking for OAuth session after redirect...');
-      loadUser();
-    };
-    
-    // Check if we just returned from OAuth redirect
-    const checkOAuthState = async () => {
+    // Only handle OAuth callback on mount; do NOT auto-load a cached user session
+    const handleOAuthCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
+
+      // If we just returned from OAuth redirect, then load the user session
       if (urlParams.has('code') || urlParams.has('state')) {
         console.log('OAuth callback detected, loading user session...');
         // Give Amplify a moment to process the OAuth tokens
@@ -68,13 +61,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 100);
       }
     };
-    
-    checkOAuthState();
-    window.addEventListener('focus', handleOAuthComplete);
-    
-    return () => {
-      window.removeEventListener('focus', handleOAuthComplete);
-    };
+
+    handleOAuthCallback();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -102,7 +90,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithGoogle = async () => {
     try {
       console.log('Starting Google sign-in redirect...');
-      await signInWithRedirect({ provider: 'Google' });
+      await signInWithRedirect({
+        provider: 'Google',
+        // Attach extra query params via a cast so we can force the
+        // Google account chooser without breaking TypeScript types.
+        ...( {
+          extraQueryParams: {
+            prompt: 'select_account',
+          },
+        } as any ),
+      });
     } catch (error) {
       console.error('Google sign-in redirect failed:', error);
     }
