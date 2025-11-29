@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-
-import { signIn, signUp, signOut, getCurrentUser, fetchUserAttributes, signInWithRedirect } from "aws-amplify/auth";
+import {
+  signIn,
+  signUp,
+  signOut,
+  getCurrentUser,
+  fetchUserAttributes,
+  signInWithRedirect,
+  fetchAuthSession,
+} from "aws-amplify/auth";
 
 interface User {
   email: string;
@@ -28,16 +35,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  /** -------------------------------------------------------
-   *  LOAD USER PROPERLY (THIS WAS YOUR MAIN PROBLEM)
-   *  -------------------------------------------------------
-   */
   const loadUser = async () => {
     try {
+      // Ensure session tokens are materialized before querying user
+      await fetchAuthSession();
       const currentUser = await getCurrentUser();
       const attributes = await fetchUserAttributes();
 
-      // Extract properly (Cognito uses EXACT names below)
       const email = attributes.email ?? "";
       const name =
         attributes.name ||
@@ -60,31 +64,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /** -------------------------------------------------------
-   *  HANDLE OAUTH REDIRECT PROPERLY
-   *  -------------------------------------------------------
-   */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
-    // If this is an OAuth return, load user
     if (params.has("code") || params.has("state")) {
+      // Give Amplify a tick to store tokens after redirect
       setTimeout(() => {
         loadUser();
-      }, 150); // small delay lets Amplify store the tokens correctly
+      }, 150);
     } else {
-      // If page loads normally, try loading cached session
       loadUser();
     }
   }, []);
 
-  /** Email/Password login */
   const login = async (email: string, password: string) => {
     await signIn({ username: email, password });
     await loadUser();
   };
 
-  /** Email/Password signup */
   const signup = async (email: string, password: string) => {
     await signUp({
       username: email,
@@ -93,16 +89,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  /** Logout */
   const logout = async () => {
     await signOut();
     setUser(null);
   };
 
-  /** -------------------------------------------------------
-   * GOOGLE LOGIN (CORRECT FIXED VERSION)
-   * -------------------------------------------------------
-   */
   const loginWithGoogle = async () => {
     await signInWithRedirect({
       provider: "Google",
@@ -130,7 +121,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-/** Hook */
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
