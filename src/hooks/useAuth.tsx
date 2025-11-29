@@ -40,6 +40,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isPremium,
       });
     } catch (error) {
+      console.log('No authenticated user found:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -47,7 +48,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Load user on mount and after OAuth redirect
     loadUser();
+    
+    // Set up a listener for when user completes OAuth flow
+    const handleOAuthComplete = () => {
+      console.log('Checking for OAuth session after redirect...');
+      loadUser();
+    };
+    
+    // Check if we just returned from OAuth redirect
+    const checkOAuthState = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('code') || urlParams.has('state')) {
+        console.log('OAuth callback detected, loading user session...');
+        // Give Amplify a moment to process the OAuth tokens
+        setTimeout(() => {
+          loadUser();
+        }, 100);
+      }
+    };
+    
+    checkOAuthState();
+    window.addEventListener('focus', handleOAuthComplete);
+    
+    return () => {
+      window.removeEventListener('focus', handleOAuthComplete);
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
