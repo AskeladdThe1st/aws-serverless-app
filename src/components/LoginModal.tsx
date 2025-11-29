@@ -16,8 +16,13 @@ export const LoginModal = ({ open, onClose }: LoginModalProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, signup, loginWithGoogle } = useAuth();
+  const { user, login, signup, loginWithGoogle } = useAuth();
   const { toast } = useToast();
+
+  // Close modal if user becomes authenticated
+  if (user && open) {
+    onClose();
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
