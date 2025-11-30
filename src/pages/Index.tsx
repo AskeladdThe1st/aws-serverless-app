@@ -3,6 +3,7 @@ import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { PricingModal } from '@/components/PricingModal';
 import { useToast } from '@/hooks/use-toast';
 import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
 import { Calculator, Settings } from 'lucide-react';
@@ -25,6 +26,7 @@ const Index = () => {
   const [mode, setMode] = useState<'auto' | 'hybrid'>('auto');
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [showMoreSteps, setShowMoreSteps] = useState(false);
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
@@ -661,6 +663,7 @@ const Index = () => {
         onNewChat={createNewChat}
         onSelectChat={selectChat}
         onDeleteChat={deleteChatSession}
+        onOpenPricing={() => setIsPricingOpen(true)}
       />
 
       {/* Main chat area */}
@@ -761,6 +764,12 @@ const Index = () => {
         onConciseAnswersChange={setConciseAnswers}
         sympyVerification={sympyVerification}
         onSympyVerificationChange={setSympyVerification}
+      />
+
+      {/* Pricing Modal */}
+      <PricingModal
+        open={isPricingOpen}
+        onOpenChange={setIsPricingOpen}
       />
     </div>
   );
