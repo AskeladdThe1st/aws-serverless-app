@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Plus, Trash2, MessageSquare, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from './UserAvatar';
+import { UsageCard } from './UsageCard';
 
 export interface Chat {
   id: string;
@@ -18,9 +19,10 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  onOpenPricing: () => void;
 }
 
-export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat }: ChatSidebarProps) => {
+export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat, onOpenPricing }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -183,6 +185,15 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
             </div>
           </ScrollArea>
         </div>
+
+        {/* Usage Card */}
+        <UsageCard
+          problemsLeft={9}
+          maxProblems={20}
+          onSeePlans={onOpenPricing}
+          onUpgrade={onOpenPricing}
+          isCollapsed={isCollapsed}
+        />
 
         {/* User Avatar at Bottom */}
         <div className={cn(
