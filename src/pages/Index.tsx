@@ -5,7 +5,7 @@ import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { PricingModal } from '@/components/PricingModal';
 import { useToast } from '@/hooks/use-toast';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -30,10 +30,44 @@ const Index = () => {
   const [showMoreSteps, setShowMoreSteps] = useState(false);
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
+  const [usage, setUsage] = useState<any>(null);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const { toast } = useToast();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
+
+  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
+
+  const refreshUsage = async () => {
+    try {
+      const userId = getOrCreateUserId();
+      const usagePayload = await fetchUsage(userId);
+      const payload = (usagePayload as any)?.usage ?? usagePayload;
+      setUsage(payload);
+      return payload;
+    } catch (error) {
+      console.error('Failed to load usage', error);
+      return null;
+    }
+  };
+
+  const parseLambdaResponse = async (res: Response) => {
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch (e) {
+      // ignore
+    }
+    const parsed = data?.body ? JSON.parse(data.body) : data;
+    if (parsed?.usage) {
+      setUsage(parsed.usage);
+    }
+    if (!res.ok) {
+      throw new Error(parsed?.message || parsed?.error || 'Request failed');
+    }
+    return parsed;
+  };
 
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
@@ -54,6 +88,8 @@ const Index = () => {
           createdAt: s.created_at
         }));
         setChatSessions(formattedSessions);
+
+        await refreshUsage();
 
         const savedSessionId = localStorage.getItem('cgpt_session_id');
         if (savedSessionId) {
@@ -249,12 +285,43 @@ const Index = () => {
     setInputValue(text);
   };
 
+  const handlePlanSelect = async (_planId: string, priceId?: string) => {
+    try {
+      setIsCheckoutLoading(true);
+      const userId = getOrCreateUserId();
+      const result = await createCheckoutSession(userId, priceId);
+      const parsed = (result as any)?.body ? JSON.parse((result as any).body) : result;
+      const checkoutUrl = (parsed as any)?.checkout_url;
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+      } else {
+        toast({ title: 'Checkout unavailable', description: 'Could not start checkout session.' });
+      }
+    } catch (error) {
+      console.error('Failed to start checkout', error);
+      toast({ title: 'Stripe error', description: error instanceof Error ? error.message : 'Unable to start checkout', variant: 'destructive' });
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
+
   const handleSend = async (text: string, images?: File[]) => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const userId = getOrCreateUserId();
     const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId || !sessionId) return;
+
+    const usageInfo = await refreshUsage();
+    if (usageInfo?.upgrade_required) {
+      toast({
+        title: 'Daily limit reached',
+        description: 'Upgrade your plan to continue solving more problems today.',
+        variant: 'destructive'
+      });
+      setIsPricingOpen(true);
+      return;
+    }
 
     // Generate unique request ID for tracking
     const requestId = crypto.randomUUID();
@@ -267,8 +334,6 @@ const Index = () => {
     // Check if we're responding to a clarification request
     const currentChat = chatSessions.find(c => c.id === sessionId);
     const isRespondingToClarification = currentChat?.awaitingClarification && !images;
-
-    const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
     // Optimistically show user message immediately with all images
     const userMessage: Message = {
@@ -289,7 +354,7 @@ const Index = () => {
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -301,7 +366,7 @@ const Index = () => {
             text: text,
             images: currentChat.clarificationImages,
           }),
-        });
+        }));
         
         // Clear clarification state
         setChatSessions(prev =>
@@ -330,7 +395,7 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await fetch(LAMBDA_URL, {
+          await parseLambdaResponse(await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -342,10 +407,10 @@ const Index = () => {
               text: text || 'Solve this problem',
               images: imagesBase64,
             }),
-          });
+          }));
         } else {
           // Use the new classify action
-          const classifyResponse = await fetch(LAMBDA_URL, {
+          const classifyResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -356,9 +421,9 @@ const Index = () => {
               session_id: sessionId,
               images: [imagesBase64[0]],
             }),
-          }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
-          
-          const classification = classifyResponse?.classification || 'solve';
+          }));
+
+          const classification = (classifyResponse as any)?.classification || 'solve';
           
           if (classification === 'graph') {
             // It's a graph -> send graph action with first image only
@@ -373,11 +438,11 @@ const Index = () => {
             
             if (text.trim()) payload.text = text;
             
-            const graphResponse = await fetch(LAMBDA_URL, {
+            const graphResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
-            }).then(res => res.json()).then(data => data?.body ? JSON.parse(data.body) : data);
+            }));
             
             console.log('[GRAPH RESPONSE]', {
               needs_clarification: graphResponse?.needs_clarification,
@@ -423,7 +488,7 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await fetch(LAMBDA_URL, {
+            await parseLambdaResponse(await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -435,12 +500,12 @@ const Index = () => {
                 text: text || 'Solve this problem',
                 images: imagesBase64,
               }),
-            });
+            }));
           }
         }
       } else {
         // Text only -> use solve action
-        await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -451,7 +516,7 @@ const Index = () => {
             session_id: sessionId,
             text: text,
           }),
-        });
+        }));
       }
 
       // CRITICAL: Check if still on the same chat after backend call
@@ -614,9 +679,13 @@ const Index = () => {
       console.log('[AUTO-TITLE] State updated with new title');
     } catch (error) {
       console.error('Error processing request:', error);
-      
+
+      if (error instanceof Error && error.message.toLowerCase().includes('limit')) {
+        setIsPricingOpen(true);
+      }
+
       // Only show error if still on the same chat
-      if (activeRequestRef.current?.sessionId === sessionId && 
+      if (activeRequestRef.current?.sessionId === sessionId &&
           activeRequestRef.current?.requestId === requestId) {
         toast({
           title: 'Error',
@@ -635,6 +704,7 @@ const Index = () => {
 
   // Check if this is the landing screen
   const isLandingScreen = messages.length === 0;
+  const limitReached = usage?.limit !== null && usage?.upgrade_required;
 
   // Convert chat sessions to sidebar format
   const chatsForSidebar: Chat[] = chatSessions.map(chat => ({
@@ -664,6 +734,7 @@ const Index = () => {
         onSelectChat={selectChat}
         onDeleteChat={deleteChatSession}
         onOpenPricing={() => setIsPricingOpen(true)}
+        usage={usage}
       />
 
       {/* Main chat area */}
@@ -693,9 +764,15 @@ const Index = () => {
                 </h1>
               </div>
 
-              <ChatInput 
-                onSend={handleSend} 
-                disabled={isLoading}
+              {limitReached && (
+                <div className="text-center text-sm text-destructive">
+                  Daily limit reached. Upgrade to continue solving more problems.
+                </div>
+              )}
+
+              <ChatInput
+                onSend={handleSend}
+                disabled={isLoading || limitReached}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
                 mode={mode}
@@ -710,7 +787,7 @@ const Index = () => {
           /* Chat Mode */
           <>
             {/* Messages */}
-            <div 
+            <div
               ref={messagesContainerRef}
               className="flex-1 overflow-y-auto"
             >
@@ -737,9 +814,14 @@ const Index = () => {
             </div>
 
             {/* Input at bottom during chat */}
-            <ChatInput 
-              onSend={handleSend} 
-              disabled={isLoading}
+            {limitReached && (
+              <div className="max-w-4xl mx-auto px-4 text-sm text-destructive">
+                Daily limit reached. Upgrade to continue solving more problems.
+              </div>
+            )}
+            <ChatInput
+              onSend={handleSend}
+              disabled={isLoading || limitReached}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               mode={mode}
@@ -770,6 +852,8 @@ const Index = () => {
       <PricingModal
         open={isPricingOpen}
         onOpenChange={setIsPricingOpen}
+        onSelectPlan={handlePlanSelect}
+        isProcessing={isCheckoutLoading}
       />
     </div>
   );

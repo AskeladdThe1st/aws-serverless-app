@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 interface PricingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSelectPlan: (planId: string, priceId?: string) => void;
+  isProcessing?: boolean;
 }
 
 const plans = [
@@ -14,6 +16,7 @@ const plans = [
     name: 'Free',
     price: '$0',
     period: 'month',
+    priceId: undefined,
     features: [
       'Up to 20 problems/day',
       'Access to standard models',
@@ -26,6 +29,7 @@ const plans = [
     name: 'Student Plus',
     price: '$15',
     period: 'month',
+    priceId: undefined,
     features: [
       'Higher daily limits',
       'Access to advanced reasoning models',
@@ -39,6 +43,7 @@ const plans = [
     name: 'Pro',
     price: '$40',
     period: 'month',
+    priceId: undefined,
     features: [
       'Highest limits and GPT-5 access',
       'Priority responses',
@@ -48,10 +53,9 @@ const plans = [
   },
 ];
 
-export const PricingModal = ({ open, onOpenChange }: PricingModalProps) => {
-  const handlePlanSelect = (planId: string) => {
-    console.log('Selected plan:', planId);
-    onOpenChange(false);
+export const PricingModal = ({ open, onOpenChange, onSelectPlan, isProcessing = false }: PricingModalProps) => {
+  const handlePlanSelect = (planId: string, priceId?: string) => {
+    onSelectPlan(planId, priceId);
   };
 
   return (
@@ -95,11 +99,12 @@ export const PricingModal = ({ open, onOpenChange }: PricingModalProps) => {
               </ul>
 
               <Button
-                onClick={() => handlePlanSelect(plan.id)}
+                onClick={() => handlePlanSelect(plan.id, plan.priceId)}
                 variant={plan.recommended ? 'default' : 'outline'}
                 className="w-full"
+                disabled={isProcessing}
               >
-                Choose plan
+                {isProcessing ? 'Starting checkout...' : 'Choose plan'}
               </Button>
             </div>
           ))}
