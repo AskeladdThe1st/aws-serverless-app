@@ -110,6 +110,28 @@ export async function updateManualMode(
   });
 }
 
+export async function fetchUsage(userId: string) {
+  return callLambda({
+    action: "usage",
+    user_id: userId,
+  });
+}
+
+export async function createCheckoutSession(
+  userId: string,
+  priceId?: string,
+  successUrl?: string,
+  cancelUrl?: string
+) {
+  return callLambda({
+    action: "stripe_checkout",
+    user_id: userId,
+    price_id: priceId,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
+}
+
 export async function solveProblem(
   userId: string,
   sessionId: string,

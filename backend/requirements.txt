@@ -2,3 +2,4 @@ openai==1.55.3
 boto3
 sympy
 httpx==0.27.2
+stripe==11.3.0

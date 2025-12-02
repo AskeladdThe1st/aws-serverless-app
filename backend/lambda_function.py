@@ -2,10 +2,13 @@
 """
 CalculusGPT — concise, verified, MathGPT-style tutor (OpenAI + SymPy + DynamoDB)
 """
-import json, boto3, asyncio, sys, io, os, re as regex, time, traceback
+import json, boto3, asyncio, sys, io, os, re as regex, time, traceback, base64
+from datetime import datetime
 from decimal import Decimal
 from sympy import *
 from openai import AsyncOpenAI
+import stripe
+
 from graph_engine import (
     extract_graph_features,
     analyze_graph_features,
@@ -31,10 +34,18 @@ SYSTEM_PROMPT = (
 )
 
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
+STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
+STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
+DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
+SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
+CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
+GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
 sessions_table = dynamo.Table("calculus_sessions")
+usage_table = dynamo.Table(USAGE_TABLE)
 
 
 # ============================================================
@@ -108,6 +119,107 @@ def _verify_expression(code: str) -> bool:
 
 def respond(status: int, body: dict):
     return {"statusCode": status, "body": json.dumps(body)}
+
+
+def _today():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def _get_secret_value(secret_name: str):
+    sec = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
+        SecretId=secret_name
+    )
+    raw = sec.get("SecretString") or ""
+    try:
+        parsed = json.loads(raw)
+        return parsed
+    except Exception:
+        return raw
+
+
+def _get_stripe_api_key() -> str:
+    raw = _get_secret_value(STRIPE_SECRET_NAME)
+    if isinstance(raw, dict):
+        return raw.get("api_key") or raw.get("secret") or raw.get("STRIPE_SECRET_KEY") or ""
+    return str(raw)
+
+
+def _get_webhook_secret() -> str:
+    raw = _get_secret_value(STRIPE_WEBHOOK_SECRET_NAME)
+    if isinstance(raw, dict):
+        return raw.get("secret") or raw.get("STRIPE_WEBHOOK_SECRET") or ""
+    return str(raw)
+
+
+def get_usage_record(user_id: str) -> dict:
+    resp = usage_table.get_item(Key={"user_id": user_id})
+    item = resp.get("Item") or {}
+    today = _today()
+    if not item:
+        item = {
+            "user_id": user_id,
+            "plan": "free",
+            "subscription_status": "inactive",
+            "usage_date": today,
+            "usage_count": 0,
+        }
+        usage_table.put_item(Item=item)
+        return item
+    if item.get("usage_date") != today:
+        item["usage_date"] = today
+        item["usage_count"] = 0
+        usage_table.put_item(Item=item)
+    return item
+
+
+def calculate_usage_info(user_id: str) -> dict:
+    record = get_usage_record(user_id)
+    status = (record.get("subscription_status") or "inactive").lower()
+    limit = None if status in {"active", "trialing", "past_due"} else GUEST_DAILY_LIMIT
+    used = int(record.get("usage_count") or 0)
+    problems_left = None if limit is None else max(limit - used, 0)
+    return {
+        "plan": record.get("plan", "free"),
+        "subscription_status": status,
+        "limit": limit,
+        "used_today": used,
+        "problems_left": problems_left,
+        "upgrade_required": False if limit is None else problems_left <= 0,
+    }
+
+
+def increment_usage(user_id: str) -> dict:
+    record = get_usage_record(user_id)
+    record["usage_date"] = _today()
+    record["usage_count"] = int(record.get("usage_count") or 0) + 1
+    usage_table.put_item(Item=record)
+    return calculate_usage_info(user_id)
+
+
+def update_subscription(user_id: str, status: str, customer_id: str = None, subscription_id: str = None):
+    record = get_usage_record(user_id)
+    record["subscription_status"] = status
+    record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
+    if customer_id:
+        record["stripe_customer_id"] = customer_id
+    if subscription_id:
+        record["subscription_id"] = subscription_id
+    usage_table.put_item(Item=record)
+    return record
+
+
+def enforce_usage(user_id: str):
+    info = calculate_usage_info(user_id)
+    if info["limit"] is not None and info.get("problems_left", 0) <= 0:
+        return respond(
+            429,
+            {
+                "error": "limit_reached",
+                "message": "Daily limit reached. Upgrade to continue.",
+                "usage": info,
+            },
+        )
+    return info
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
     item = {
@@ -211,6 +323,35 @@ def normalize_graph_payload(data: dict) -> dict:
 
 def lambda_handler(event, context):
     try:
+        headers_raw = event.get("headers") or {}
+        headers = {str(k).lower(): v for k, v in headers_raw.items()}
+
+        # Stripe webhook handling (raw payload)
+        stripe_sig = headers.get("stripe-signature")
+        if stripe_sig:
+            payload = event.get("body") or ""
+            if event.get("isBase64Encoded"):
+                payload = base64.b64decode(payload)
+            secret = _get_webhook_secret()
+            try:
+                stripe.api_key = _get_stripe_api_key()
+                stripe_event = stripe.Webhook.construct_event(payload, stripe_sig, secret)
+            except Exception as e:
+                return respond(400, {"error": "WebhookError", "message": str(e)})
+
+            evt_type = stripe_event.get("type")
+            data_obj = stripe_event.get("data", {}).get("object", {}) or {}
+            if evt_type == "checkout.session.completed":
+                metadata = data_obj.get("metadata") or {}
+                user_meta = dict(metadata)
+                uid = user_meta.get("user_id") or user_meta.get("userId") or "guest"
+                update_subscription(uid, data_obj.get("status", "active"), data_obj.get("customer"), data_obj.get("subscription"))
+            elif evt_type == "customer.subscription.deleted":
+                metadata = data_obj.get("metadata") or {}
+                uid = metadata.get("user_id") or metadata.get("userId") or "guest"
+                update_subscription(uid, data_obj.get("status", "canceled"), data_obj.get("customer"), data_obj.get("id"))
+            return respond(200, {"received": True})
+
         # CORS preflight
         if (
             event.get("requestContext", {})
@@ -252,6 +393,26 @@ def lambda_handler(event, context):
         user_id = body.get("user_id") or "guest"
         session_id = body.get("session_id")
         manual_mode_input = body.get("manual_mode")
+
+        if action == "usage":
+            return respond(200, {"usage": calculate_usage_info(user_id)})
+
+        if action == "stripe_checkout":
+            price_id = body.get("price_id") or DEFAULT_PRICE_ID
+            if not price_id:
+                return respond(400, {"error": "Missing Stripe price_id"})
+            try:
+                stripe.api_key = _get_stripe_api_key()
+                session = stripe.checkout.Session.create(
+                    mode="subscription",
+                    line_items=[{"price": price_id, "quantity": 1}],
+                    success_url=body.get("success_url") or SUCCESS_URL,
+                    cancel_url=body.get("cancel_url") or CANCEL_URL,
+                    metadata={"user_id": user_id},
+                )
+                return respond(200, {"checkout_url": session.url, "usage": calculate_usage_info(user_id)})
+            except Exception as e:
+                return respond(500, {"error": "StripeError", "message": str(e)})
 
         # classification endpoint
         if action == "classify":
@@ -302,6 +463,9 @@ def lambda_handler(event, context):
 
         # GRAPH
         if action == "graph":
+            gate = enforce_usage(user_id)
+            if isinstance(gate, dict) and gate.get("statusCode"):
+                return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
                 return {"statusCode": 400, "body": json.dumps({"error": "Image required for graph analysis"})}
@@ -332,6 +496,8 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
+            usage_info = increment_usage(user_id)
+            payload["usage"] = usage_info
             return {"statusCode": 200, "body": json.dumps(clean_decimals(payload))}
 
         # CLARIFY GRAPH
@@ -356,6 +522,9 @@ def lambda_handler(event, context):
 
         # SOLVE (unchanged structure, now multi-image)
         if action == "solve":
+            gate = enforce_usage(user_id)
+            if isinstance(gate, dict) and gate.get("statusCode"):
+                return gate
             if not text and not image_list:
                 return {"statusCode": 400, "body": json.dumps({"error": "No input provided."})}
             if not text and image_list:
@@ -399,9 +568,19 @@ def lambda_handler(event, context):
             if user_id and session_id and session:
                 append_message(user_id, session_id, "user", text)
                 append_message(user_id, session_id, "assistant", reply)
+            usage_info = increment_usage(user_id)
             return {
                 "statusCode": 200,
-                "body": json.dumps(clean_decimals({"expression": code or "", "result": result or "", "steps": reply or ""})),
+                "body": json.dumps(
+                    clean_decimals(
+                        {
+                            "expression": code or "",
+                            "result": result or "",
+                            "steps": reply or "",
+                            "usage": usage_info,
+                        }
+                    )
+                ),
             }
 
         return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action}"})}

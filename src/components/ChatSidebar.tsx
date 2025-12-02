@@ -20,11 +20,21 @@ interface ChatSidebarProps {
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onOpenPricing: () => void;
+  usage?: {
+    problems_left?: number;
+    limit?: number | null;
+    subscription_status?: string;
+    upgrade_required?: boolean;
+  };
 }
 
-export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat, onOpenPricing }: ChatSidebarProps) => {
+export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat, onOpenPricing, usage }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const maxProblems = usage?.limit === null ? undefined : usage?.limit || 20;
+  const problemsLeft = usage?.limit === null ? maxProblems : usage?.problems_left ?? maxProblems ?? 0;
+  const isUnlimited = usage?.limit === null;
 
   const handleDeleteClick = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
@@ -188,8 +198,10 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
         {/* Usage Card */}
         <UsageCard
-          problemsLeft={9}
-          maxProblems={20}
+          problemsLeft={problemsLeft}
+          maxProblems={maxProblems}
+          isUnlimited={isUnlimited}
+          statusLabel={usage?.subscription_status}
           onSeePlans={onOpenPricing}
           onUpgrade={onOpenPricing}
           isCollapsed={isCollapsed}

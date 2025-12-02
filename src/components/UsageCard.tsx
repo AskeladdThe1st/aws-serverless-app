@@ -2,21 +2,27 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
 interface UsageCardProps {
-  problemsLeft: number;
-  maxProblems: number;
+  problemsLeft?: number;
+  maxProblems?: number;
   onSeePlans: () => void;
   onUpgrade: () => void;
   isCollapsed?: boolean;
+  statusLabel?: string;
+  isUnlimited?: boolean;
 }
 
-export const UsageCard = ({ 
-  problemsLeft, 
-  maxProblems, 
-  onSeePlans, 
+export const UsageCard = ({
+  problemsLeft,
+  maxProblems,
+  onSeePlans,
   onUpgrade,
-  isCollapsed = false 
+  isCollapsed = false,
+  statusLabel,
+  isUnlimited = false
 }: UsageCardProps) => {
-  const percentage = (problemsLeft / maxProblems) * 100;
+  const safeMax = maxProblems || problemsLeft || 1;
+  const percentage = isUnlimited ? 100 : Math.min(100, Math.max(0, ((problemsLeft ?? safeMax) / safeMax) * 100));
+  const limitReached = !isUnlimited && (problemsLeft ?? 0) <= 0;
 
   if (isCollapsed) {
     return null;
@@ -25,19 +31,26 @@ export const UsageCard = ({
   return (
     <div className="p-4 border-t border-sidebar-border space-y-3">
       <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">
-          {problemsLeft} problems left today
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-foreground">
+            {isUnlimited ? 'Unlimited problems' : `${Math.max(problemsLeft ?? 0, 0)} problems left today`}
+          </p>
+          {statusLabel && (
+            <span className="text-[11px] px-2 py-1 rounded-full bg-muted text-muted-foreground capitalize">
+              {statusLabel}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground">
-          Upgrade for more usage
+          {limitReached ? 'Daily limit reached. Upgrade to continue.' : 'Upgrade for more usage'}
         </p>
       </div>
 
       <Progress value={percentage} className="h-2" />
 
       <div className="flex gap-2">
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm" 
           onClick={onSeePlans}
           className="flex-1 text-xs"
