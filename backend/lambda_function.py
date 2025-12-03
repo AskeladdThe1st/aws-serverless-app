@@ -373,7 +373,8 @@ def lambda_handler(event, context):
         else:
             body = event
 
-        action = body.get("action", "solve")
+        action_raw = body.get("action", "solve")
+        action = str(action_raw).strip().lower()
         text = str(body.get("text") or "").strip()
 
         # Always treat images as a list
@@ -397,7 +398,7 @@ def lambda_handler(event, context):
         if action == "usage":
             return respond(200, {"usage": calculate_usage_info(user_id)})
 
-        if action == "stripe_checkout":
+        if action in {"stripe_checkout", "stripe-checkout", "stripe checkout"}:
             price_id = body.get("price_id") or DEFAULT_PRICE_ID
             if not price_id:
                 return respond(400, {"error": "Missing Stripe price_id"})
@@ -583,7 +584,7 @@ def lambda_handler(event, context):
                 ),
             }
 
-        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action}"})}
+        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action_raw}"})}
 
     except Exception:
         traceback.print_exc()
