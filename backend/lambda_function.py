@@ -482,6 +482,10 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
+        global _REQUEST_ORIGIN
+        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
 
         config = _config_status()
 
