@@ -37,7 +37,6 @@ SYSTEM_PROMPT = (
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
-OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
 DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
@@ -526,14 +525,8 @@ def lambda_handler(event, context):
         # Body parsing
         if "body" in event:
             raw = event.get("body") or "{}"
-            if event.get("isBase64Encoded") and isinstance(raw, str):
-                try:
-                    raw = base64.b64decode(raw)
-                except Exception:
-                    # Let JSON decoding report the bad payload
-                    pass
             try:
-                body = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else (raw or {})
+                body = json.loads(raw) if isinstance(raw, str) else (raw or {})
             except json.JSONDecodeError as e:
                 return respond(
                     400,
@@ -599,7 +592,6 @@ def lambda_handler(event, context):
                     "status": "ok",
                     "git_sha": GIT_SHA,
                     "build_time": BUILD_TIME,
-                    "config": config,
                     "known_actions": sorted(
                         {
                             "usage",
@@ -818,11 +810,7 @@ def lambda_handler(event, context):
 
     except Exception as exc:
         traceback.print_exc()
-        return respond(
-            500,
-            {
-                "error": "Internal server error",
-                "message": str(exc),
-                "config": _config_status(force_refresh=True),
-            },
-        )
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal server error", "message": str(exc)}),
+        }
