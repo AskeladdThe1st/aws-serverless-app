@@ -41,6 +41,8 @@ DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
+GIT_SHA = os.environ.get("GIT_SHA", "unknown")
+BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
@@ -383,6 +385,9 @@ def lambda_handler(event, context):
             "stripecheckout": "stripe_checkout",
             "stripe-checkout": "stripe_checkout",
             "stripe checkout": "stripe_checkout",
+            "status": "status",
+            "health": "status",
+            "version": "status",
         }
         action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
@@ -404,6 +409,32 @@ def lambda_handler(event, context):
         user_id = body.get("user_id") or "guest"
         session_id = body.get("session_id")
         manual_mode_input = body.get("manual_mode")
+
+        if action == "status":
+            return respond(
+                200,
+                {
+                    "status": "ok",
+                    "git_sha": GIT_SHA,
+                    "build_time": BUILD_TIME,
+                    "known_actions": sorted(
+                        {
+                            "usage",
+                            "stripe_checkout",
+                            "classify",
+                            "create",
+                            "load",
+                            "list",
+                            "delete",
+                            "update",
+                            "manual_graph",
+                            "graph",
+                            "clarify_graph",
+                            "solve",
+                        }
+                    ),
+                },
+            )
 
         if action == "usage":
             return respond(200, {"usage": calculate_usage_info(user_id)})
