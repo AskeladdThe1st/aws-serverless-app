@@ -374,7 +374,17 @@ def lambda_handler(event, context):
             body = event
 
         action_raw = body.get("action", "solve")
-        action = str(action_raw).strip().lower()
+        action_input = str(action_raw).strip()
+        # Normalize action names so variants like "stripe-checkout" and
+        # "stripe checkout" resolve to the same handler.
+        action_key = regex.sub(r"[^a-z0-9]+", "_", action_input.lower()).strip("_")
+        alias_map = {
+            "stripe_checkout": "stripe_checkout",
+            "stripecheckout": "stripe_checkout",
+            "stripe-checkout": "stripe_checkout",
+            "stripe checkout": "stripe_checkout",
+        }
+        action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
 
         # Always treat images as a list
