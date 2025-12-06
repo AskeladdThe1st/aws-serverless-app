@@ -640,9 +640,9 @@ def lambda_handler(event, context):
         # classification endpoint
         if action == "classify":
             if not image_list:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for classification"})}
+                return respond(400, {"error": "Image required for classification"})
             is_graph = asyncio.run(is_graph_image(image_list[0], model_choice))
-            return {"statusCode": 200, "body": json.dumps({"classification": "graph" if is_graph else "not_graph"})}
+            return respond(200, {"classification": "graph" if is_graph else "not_graph"})
 
         # CRUD
         if action == "create":
@@ -691,7 +691,7 @@ def lambda_handler(event, context):
                 return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for graph analysis"})}
+                return respond(400, {"error": "Image required for graph analysis"})
 
             # derivative text redirect
             if text.lower().strip() and any(term in text.lower() for term in [
@@ -721,13 +721,13 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
             usage_info = increment_usage(user_id)
             payload["usage"] = usage_info
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(payload))}
+            return respond(200, clean_decimals(payload))
 
         # CLARIFY GRAPH
         if action == "clarify_graph":
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for graph clarification"})}
+                return respond(400, {"error": "Image required for graph clarification"})
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
             if text:
@@ -741,7 +741,7 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(payload))}
+            return respond(200, clean_decimals(payload))
 
         # SOLVE (unchanged structure, now multi-image)
         if action == "solve":
@@ -749,7 +749,7 @@ def lambda_handler(event, context):
             if isinstance(gate, dict) and gate.get("statusCode"):
                 return gate
             if not text and not image_list:
-                return {"statusCode": 400, "body": json.dumps({"error": "No input provided."})}
+                return respond(400, {"error": "No input provided."})
             if not text and image_list:
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
@@ -771,11 +771,11 @@ def lambda_handler(event, context):
                     "image_url": {"url": f"data:image/png;base64,{img_b64}"},
                 })
             if not user_content:
-                return {"statusCode": 400, "body": json.dumps({"error": "No input provided."})}
+                return respond(400, {"error": "No input provided."})
             messages.append({"role": "user", "content": user_content})
             chat_res = asyncio.run(_chat(messages, 1400))
             if "error" in chat_res:
-                return {"statusCode": 500, "body": json.dumps({"error": "OpenAIError", "details": chat_res["error"]})}
+                return respond(500, {"error": "OpenAIError", "details": chat_res["error"]})
             reply = chat_res["text"]
             code = ""
             code_match = regex.search(r"```(?:python)?(.*?)```", reply, flags=regex.S)
@@ -783,7 +783,7 @@ def lambda_handler(event, context):
             if code and not _verify_expression(code):
                 fix_res = asyncio.run(_chat([{"role": "system", "content": "Fix this SymPy code to match the solution."}, {"role": "user", "content": code}], 300))
                 if "error" in fix_res:
-                    return {"statusCode": 500, "body": json.dumps({"error": "OpenAIError", "details": fix_res["error"]})}
+                    return respond(500, {"error": "OpenAIError", "details": fix_res["error"]})
                 fixed = regex.search(r"```(?:python)?(.*?)```", fix_res["text"], flags=regex.S)
                 if fixed:
                     code = fixed.group(1).strip()
@@ -792,19 +792,17 @@ def lambda_handler(event, context):
                 append_message(user_id, session_id, "user", text)
                 append_message(user_id, session_id, "assistant", reply)
             usage_info = increment_usage(user_id)
-            return {
-                "statusCode": 200,
-                "body": json.dumps(
-                    clean_decimals(
-                        {
-                            "expression": code or "",
-                            "result": result or "",
-                            "steps": reply or "",
-                            "usage": usage_info,
-                        }
-                    )
+            return respond(
+                200,
+                clean_decimals(
+                    {
+                        "expression": code or "",
+                        "result": result or "",
+                        "steps": reply or "",
+                        "usage": usage_info,
+                    }
                 ),
-            }
+            )
 
         return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action_raw}"})}
 
