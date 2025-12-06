@@ -1,0 +1,76 @@
+name: Deploy backend Lambda container
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-backend:
+    name: Build and deploy backend Lambda image
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        env:
+          CONFIG_AWS_REGION: ${{ env.AWS_REGION }}
+          CONFIG_ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          CONFIG_LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          CONFIG_AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          missing=()
+          [ -z "${CONFIG_AWS_REGION}" ] && missing+=("AWS_REGION (Repository variable)")
+          [ -z "${CONFIG_ECR_REPOSITORY}" ] && missing+=("ECR_REPOSITORY (Repository variable)")
+          [ -z "${CONFIG_LAMBDA_FUNCTION_NAME}" ] && missing+=("LAMBDA_FUNCTION_NAME (Repository variable)")
+          [ -z "${CONFIG_AWS_DEPLOY_ROLE_ARN}" ] && missing+=("AWS_DEPLOY_ROLE_ARN (Secret)")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf "\nThe deployment workflow is missing required configuration:\n\n"
+            for item in "${missing[@]}"; do
+              printf " - %s\n" "$item"
+            done
+            printf "\nAdd the missing values in GitHub > Settings > Secrets and variables > Actions, then re-run the workflow.\n" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          docker build -t "${IMAGE_URI}" \
+            --build-arg GIT_SHA="${GITHUB_SHA}" \
+            --build-arg BUILD_TIME="${BUILD_TIME}" \
+            backend
+          docker push "${IMAGE_URI}"
+
+      - name: Update Lambda to new image
+        run: |
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${IMAGE_URI}"
