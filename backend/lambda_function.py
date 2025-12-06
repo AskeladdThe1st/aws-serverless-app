@@ -37,6 +37,7 @@ SYSTEM_PROMPT = (
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
+OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
 DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
@@ -45,6 +46,26 @@ CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
 GIT_SHA = os.environ.get("GIT_SHA", "unknown")
 BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
+# CORS configuration locked to the Amplify app origin and POST-only requests.
+# If you need a different single origin, set AMPLIFY_APP_URL (or CORS_ALLOW_ORIGIN)
+# to that exact origin. Wildcards and comma-separated lists are rejected.
+AMPLIFY_ORIGIN_DEFAULT = "https://main.d2binnmnc1amly.amplifyapp.com"
+_raw_origin = (
+    os.environ.get("AMPLIFY_APP_URL")
+    or os.environ.get("AMPLIFY_ORIGIN")
+    or os.environ.get("CORS_ALLOW_ORIGIN")
+    or os.environ.get("ALLOWED_ORIGINS")
+    or AMPLIFY_ORIGIN_DEFAULT
+)
+_first_origin = _raw_origin.split(",")[0].strip()
+if not _first_origin or _first_origin == "*":
+    CORS_ALLOW_ORIGIN = AMPLIFY_ORIGIN_DEFAULT
+else:
+    CORS_ALLOW_ORIGIN = _first_origin
+
+CORS_ALLOW_HEADERS = "content-type"
+CORS_ALLOW_METHODS = "POST"
+CORS_ALLOW_CREDENTIALS = False
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
@@ -151,15 +172,16 @@ def _verify_expression(code: str) -> bool:
 #                DYNAMODB CRUD HELPERS
 # ============================================================
 
-def respond(status: int, body: dict):
+def respond(status: int, body: dict, origin: str | None = None):
     """Return a JSON response with CORS and content-type headers."""
+    chosen_origin = CORS_ALLOW_ORIGIN
     return {
         "statusCode": status,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Origin": chosen_origin,
+            "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+            "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
         },
         "body": json.dumps(body),
     }
@@ -489,6 +511,8 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -529,8 +553,14 @@ def lambda_handler(event, context):
         # Body parsing
         if "body" in event:
             raw = event.get("body") or "{}"
+            if event.get("isBase64Encoded") and isinstance(raw, str):
+                try:
+                    raw = base64.b64decode(raw)
+                except Exception:
+                    # Let JSON decoding report the bad payload
+                    pass
             try:
-                body = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                body = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else (raw or {})
             except json.JSONDecodeError as e:
                 return respond(
                     400,
@@ -596,6 +626,7 @@ def lambda_handler(event, context):
                     "status": "ok",
                     "git_sha": GIT_SHA,
                     "build_time": BUILD_TIME,
+                    "config": config,
                     "known_actions": sorted(
                         {
                             "usage",
@@ -808,11 +839,15 @@ def lambda_handler(event, context):
                 ),
             )
 
-        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action_raw}"})}
+        return respond(400, {"error": f"Unknown action: {action_raw}"})
 
     except Exception as exc:
         traceback.print_exc()
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Internal server error", "message": str(exc)}),
-        }
+        return respond(
+            500,
+            {
+                "error": "Internal server error",
+                "message": str(exc),
+                "config": _config_status(force_refresh=True),
+            },
+        )
