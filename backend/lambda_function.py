@@ -8,6 +8,7 @@ from decimal import Decimal
 from sympy import *
 from openai import AsyncOpenAI
 import stripe
+from botocore.exceptions import ClientError
 
 from graph_engine import (
     extract_graph_features,
@@ -35,17 +36,44 @@ SYSTEM_PROMPT = (
 
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
+SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
+OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
 DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
+GIT_SHA = os.environ.get("GIT_SHA", "unknown")
+BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
+# CORS configuration. Defaults mirror the attached Amplify CORS panel:
+# - Allow origin: https://main.d2binnmnc1amly.amplifyapp.com
+# - Allow headers: content-type
+# - Allow methods: POST
+# - Allow credentials: false
+# Override these via env vars if your frontend uses a different origin.
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "CORS_ALLOW_ORIGIN",
+        os.environ.get("ALLOWED_ORIGINS", "https://main.d2binnmnc1amly.amplifyapp.com"),
+    ).split(",")
+    if o.strip()
+]
+CORS_ALLOW_HEADERS = os.environ.get("CORS_ALLOW_HEADERS", "content-type")
+CORS_ALLOW_METHODS = os.environ.get("CORS_ALLOW_METHODS", "POST")
+CORS_ALLOW_CREDENTIALS = os.environ.get("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
+
+# Track the request origin for this invocation so all responses return consistent CORS headers.
+_REQUEST_ORIGIN = None
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
-sessions_table = dynamo.Table("calculus_sessions")
+sessions_table = dynamo.Table(SESSIONS_TABLE)
 usage_table = dynamo.Table(USAGE_TABLE)
+CONFIG_CHECK = None
+CONFIG_CHECK_AT = 0
+CONFIG_TTL_SECONDS = 300
 
 
 # ============================================================
@@ -64,11 +92,38 @@ def clean_decimals(obj):
 
 # ----------------- OpenAI setup -----------------
 
+def _get_openai_api_key() -> str:
+    # Prefer environment variable to keep Lambda portable across accounts.
+    env_key = os.environ.get("OPENAI_API_KEY")
+    if env_key:
+        return env_key
+
+    # Fall back to Secrets Manager if configured.
+    try:
+        secret = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
+            SecretId=OPENAI_SECRET_NAME
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            "OpenAI API key missing. Set OPENAI_API_KEY env var or create the "
+            f"'{OPENAI_SECRET_NAME}' secret: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
+
+    raw = secret.get("SecretString") or ""
+    try:
+        parsed = json.loads(raw)
+        key = parsed.get("api_key") or parsed.get("OPENAI_API_KEY") or parsed.get("key")
+    except Exception:
+        key = raw
+    if not key:
+        raise RuntimeError(
+            "OpenAI API key is empty. Set OPENAI_API_KEY or populate the Secrets Manager value."
+        )
+    return str(key)
+
+
 def _get_client() -> AsyncOpenAI:
-    secret = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
-        SecretId="calculus-agent/openai-key"
-    )
-    return AsyncOpenAI(api_key=secret["SecretString"])
+    return AsyncOpenAI(api_key=_get_openai_api_key())
 
 
 async def safe_openai_json(messages, model, max_tokens=None, temperature=0):
@@ -117,8 +172,34 @@ def _verify_expression(code: str) -> bool:
 #                DYNAMODB CRUD HELPERS
 # ============================================================
 
-def respond(status: int, body: dict):
-    return {"statusCode": status, "body": json.dumps(body)}
+def _select_origin(request_origin: str | None) -> str:
+    if request_origin:
+        # If "*" is configured, reflect the caller's origin instead of literal "*"
+        # so browsers with strict CORS checks (especially when credentials are used)
+        # don't reject the response.
+        if CORS_ALLOWED_ORIGINS == ["*"] or request_origin in CORS_ALLOWED_ORIGINS:
+            return request_origin
+
+    if CORS_ALLOWED_ORIGINS:
+        return CORS_ALLOWED_ORIGINS[0]
+
+    return "*"
+
+
+def respond(status: int, body: dict, origin: str | None = None):
+    """Return a JSON response with CORS and content-type headers."""
+    chosen_origin = _select_origin(origin or _REQUEST_ORIGIN)
+    return {
+        "statusCode": status,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": chosen_origin,
+            "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+            "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
+            **({"Access-Control-Allow-Credentials": "true"} if CORS_ALLOW_CREDENTIALS else {}),
+        },
+        "body": json.dumps(body),
+    }
 
 
 def _today():
@@ -126,18 +207,27 @@ def _today():
 
 
 def _get_secret_value(secret_name: str):
-    sec = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
-        SecretId=secret_name
-    )
-    raw = sec.get("SecretString") or ""
     try:
-        parsed = json.loads(raw)
-        return parsed
-    except Exception:
-        return raw
+        sec = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
+            SecretId=secret_name
+        )
+        raw = sec.get("SecretString") or ""
+        try:
+            parsed = json.loads(raw)
+            return parsed
+        except Exception:
+            return raw
+    except ClientError as e:
+        raise RuntimeError(
+            f"Unable to read secret '{secret_name}': {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def _get_stripe_api_key() -> str:
+    env_key = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")
+    if env_key:
+        return env_key
+
     raw = _get_secret_value(STRIPE_SECRET_NAME)
     if isinstance(raw, dict):
         return raw.get("api_key") or raw.get("secret") or raw.get("STRIPE_SECRET_KEY") or ""
@@ -145,31 +235,85 @@ def _get_stripe_api_key() -> str:
 
 
 def _get_webhook_secret() -> str:
+    env_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    if env_secret:
+        return env_secret
+
     raw = _get_secret_value(STRIPE_WEBHOOK_SECRET_NAME)
     if isinstance(raw, dict):
         return raw.get("secret") or raw.get("STRIPE_WEBHOOK_SECRET") or ""
     return str(raw)
 
 
+def _config_status(force_refresh: bool = False):
+    """Return configuration diagnostics to surface misconfiguration fast."""
+    global CONFIG_CHECK, CONFIG_CHECK_AT
+
+    now = time.time()
+    if not force_refresh and CONFIG_CHECK and now - CONFIG_CHECK_AT < CONFIG_TTL_SECONDS:
+        return CONFIG_CHECK
+
+    errors, warnings = [], []
+    # DynamoDB table presence
+    try:
+        boto3.client("dynamodb", region_name=REGION).describe_table(TableName=SESSIONS_TABLE)
+    except ClientError as e:
+        errors.append(
+            f"Sessions table '{SESSIONS_TABLE}' not reachable: {e.response.get('Error', {}).get('Message', str(e))}"
+        )
+    try:
+        boto3.client("dynamodb", region_name=REGION).describe_table(TableName=USAGE_TABLE)
+    except ClientError as e:
+        errors.append(
+            f"Usage table '{USAGE_TABLE}' not reachable: {e.response.get('Error', {}).get('Message', str(e))}"
+        )
+
+    # Secrets / env vars
+    if not os.environ.get("OPENAI_API_KEY"):
+        try:
+            _ = _get_openai_api_key()
+        except Exception as e:
+            errors.append(str(e))
+    if not (os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")):
+        try:
+            _ = _get_stripe_api_key()
+        except Exception as e:
+            errors.append(f"Stripe secret missing: {e}")
+    if not os.environ.get("STRIPE_WEBHOOK_SECRET"):
+        try:
+            _ = _get_webhook_secret()
+        except Exception as e:
+            warnings.append(f"Stripe webhook secret unavailable: {e}")
+
+    CONFIG_CHECK = {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
+    CONFIG_CHECK_AT = now
+    return CONFIG_CHECK
+
+
 def get_usage_record(user_id: str) -> dict:
-    resp = usage_table.get_item(Key={"user_id": user_id})
-    item = resp.get("Item") or {}
-    today = _today()
-    if not item:
-        item = {
-            "user_id": user_id,
-            "plan": "free",
-            "subscription_status": "inactive",
-            "usage_date": today,
-            "usage_count": 0,
-        }
-        usage_table.put_item(Item=item)
+    try:
+        resp = usage_table.get_item(Key={"user_id": user_id})
+        item = resp.get("Item") or {}
+        today = _today()
+        if not item:
+            item = {
+                "user_id": user_id,
+                "plan": "free",
+                "subscription_status": "inactive",
+                "usage_date": today,
+                "usage_count": 0,
+            }
+            usage_table.put_item(Item=item)
+            return item
+        if item.get("usage_date") != today:
+            item["usage_date"] = today
+            item["usage_count"] = 0
+            usage_table.put_item(Item=item)
         return item
-    if item.get("usage_date") != today:
-        item["usage_date"] = today
-        item["usage_count"] = 0
-        usage_table.put_item(Item=item)
-    return item
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB get_usage_record failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def calculate_usage_info(user_id: str) -> dict:
@@ -189,23 +333,33 @@ def calculate_usage_info(user_id: str) -> dict:
 
 
 def increment_usage(user_id: str) -> dict:
-    record = get_usage_record(user_id)
-    record["usage_date"] = _today()
-    record["usage_count"] = int(record.get("usage_count") or 0) + 1
-    usage_table.put_item(Item=record)
-    return calculate_usage_info(user_id)
+    try:
+        record = get_usage_record(user_id)
+        record["usage_date"] = _today()
+        record["usage_count"] = int(record.get("usage_count") or 0) + 1
+        usage_table.put_item(Item=record)
+        return calculate_usage_info(user_id)
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB increment_usage failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_subscription(user_id: str, status: str, customer_id: str = None, subscription_id: str = None):
-    record = get_usage_record(user_id)
-    record["subscription_status"] = status
-    record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
-    if customer_id:
-        record["stripe_customer_id"] = customer_id
-    if subscription_id:
-        record["subscription_id"] = subscription_id
-    usage_table.put_item(Item=record)
-    return record
+    try:
+        record = get_usage_record(user_id)
+        record["subscription_status"] = status
+        record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
+        if customer_id:
+            record["stripe_customer_id"] = customer_id
+        if subscription_id:
+            record["subscription_id"] = subscription_id
+        usage_table.put_item(Item=record)
+        return record
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_subscription failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def enforce_usage(user_id: str):
@@ -222,66 +376,101 @@ def enforce_usage(user_id: str):
     return info
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
-    item = {
-        "user_id": user_id,
-        "session_id": session_id,
-        "title": title,
-        "manual_mode": bool(manual_mode),
-        "messages": [],
-        "createdAt": int(time.time()),
-        "updatedAt": int(time.time()),
-    }
-    sessions_table.put_item(Item=item)
-    return item
+    try:
+        item = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "title": title,
+            "manual_mode": bool(manual_mode),
+            "messages": [],
+            "createdAt": int(time.time()),
+            "updatedAt": int(time.time()),
+        }
+        sessions_table.put_item(Item=item)
+        return item
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB create_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def get_session(user_id, session_id):
-    resp = sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
-    return resp.get("Item")
+    try:
+        resp = sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
+        return resp.get("Item")
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB get_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def list_sessions(user_id):
     from boto3.dynamodb.conditions import Key
 
-    resp = sessions_table.query(
-        KeyConditionExpression=Key("user_id").eq(user_id)
-    )
-    return resp.get("Items", [])
+    try:
+        resp = sessions_table.query(
+            KeyConditionExpression=Key("user_id").eq(user_id)
+        )
+        return resp.get("Items", [])
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB list_sessions failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def append_message(user_id, session_id, role, content):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET messages = list_append(messages, :msg), updatedAt = :t",
-        ExpressionAttributeValues={
-            ":msg": [{"role": role, "content": content, "ts": now}],
-            ":t": now,
-        },
-    )
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET messages = list_append(messages, :msg), updatedAt = :t",
+            ExpressionAttributeValues={
+                ":msg": [{"role": role, "content": content, "ts": now}],
+                ":t": now,
+            },
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB append_message failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def delete_session(user_id, session_id):
-    sessions_table.delete_item(Key={"user_id": user_id, "session_id": session_id})
+    try:
+        sessions_table.delete_item(Key={"user_id": user_id, "session_id": session_id})
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB delete_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_title(user_id, session_id, title):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET title = :title, updatedAt = :t",
-        ExpressionAttributeValues={":title": title, ":t": now},
-    )
-    return {"updated": True}
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET title = :title, updatedAt = :t",
+            ExpressionAttributeValues={":title": title, ":t": now},
+        )
+        return {"updated": True}
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_title failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_manual_mode(user_id, session_id, manual_mode):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET manual_mode = :mm, updatedAt = :t",
-        ExpressionAttributeValues={":mm": bool(manual_mode), ":t": now},
-    )
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET manual_mode = :mm, updatedAt = :t",
+            ExpressionAttributeValues={":mm": bool(manual_mode), ":t": now},
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_manual_mode failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 def update_session(user_id, session_id, fields: dict):
     now = int(time.time())
@@ -292,12 +481,17 @@ def update_session(user_id, session_id, fields: dict):
         eav[f":{k}"] = v
     set_parts.append("updatedAt = :t")
     update_expr = "SET " + ", ".join(set_parts)
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression=update_expr,
-        ExpressionAttributeValues=eav,
-    )
-    return {"updated": True}
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=eav,
+        )
+        return {"updated": True}
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 # ============================================================
 #                GRAPH RESPONSE NORMALIZER
@@ -325,6 +519,10 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
+        global _REQUEST_ORIGIN
+        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
 
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
@@ -361,20 +559,58 @@ def lambda_handler(event, context):
             == "OPTIONS"
             or (event.get("httpMethod") or "").upper() == "OPTIONS"
         ):
-            return {"statusCode": 200, "body": json.dumps({"ok": True})}
+            return respond(200, {"ok": True})
 
         # Body parsing
         if "body" in event:
             raw = event.get("body") or "{}"
-            if isinstance(raw, str):
-                body = json.loads(raw)
-            else:
-                body = raw
+            if event.get("isBase64Encoded") and isinstance(raw, str):
+                try:
+                    raw = base64.b64decode(raw)
+                except Exception:
+                    # Let JSON decoding report the bad payload
+                    pass
+            try:
+                body = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else (raw or {})
+            except json.JSONDecodeError as e:
+                return respond(
+                    400,
+                    {
+                        "error": "BadRequest",
+                        "message": "Request body must be valid JSON",
+                        "details": str(e),
+                    },
+                )
         else:
-            body = event
+            body = event or {}
 
-        action = body.get("action", "solve")
+        action_raw = body.get("action", "solve")
+        action_input = str(action_raw).strip()
+        # Normalize action names so variants like "stripe-checkout" and
+        # "stripe checkout" resolve to the same handler.
+        action_key = regex.sub(r"[^a-z0-9]+", "_", action_input.lower()).strip("_")
+        alias_map = {
+            "stripe_checkout": "stripe_checkout",
+            "stripecheckout": "stripe_checkout",
+            "stripe-checkout": "stripe_checkout",
+            "stripe checkout": "stripe_checkout",
+            "status": "status",
+            "health": "status",
+            "version": "status",
+        }
+        action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
+
+        if not config.get("ok", True) and action != "status":
+            return respond(
+                500,
+                {
+                    "error": "ConfigError",
+                    "message": "Backend configuration is incomplete. Fix the issues below and redeploy.",
+                    "issues": config.get("errors", []),
+                    "warnings": config.get("warnings", []),
+                },
+            )
 
         # Always treat images as a list
         image_single = body.get("image")
@@ -394,15 +630,48 @@ def lambda_handler(event, context):
         session_id = body.get("session_id")
         manual_mode_input = body.get("manual_mode")
 
+        if action == "status":
+            return respond(
+                200,
+                {
+                    "status": "ok",
+                    "git_sha": GIT_SHA,
+                    "build_time": BUILD_TIME,
+                    "config": config,
+                    "known_actions": sorted(
+                        {
+                            "usage",
+                            "stripe_checkout",
+                            "classify",
+                            "create",
+                            "load",
+                            "list",
+                            "delete",
+                            "update",
+                            "manual_graph",
+                            "graph",
+                            "clarify_graph",
+                            "solve",
+                        }
+                    ),
+                },
+            )
+
         if action == "usage":
             return respond(200, {"usage": calculate_usage_info(user_id)})
 
-        if action == "stripe_checkout":
+        if action in {"stripe_checkout", "stripe-checkout", "stripe checkout"}:
             price_id = body.get("price_id") or DEFAULT_PRICE_ID
             if not price_id:
                 return respond(400, {"error": "Missing Stripe price_id"})
             try:
-                stripe.api_key = _get_stripe_api_key()
+                stripe_api_key = _get_stripe_api_key()
+            except Exception as e:
+                return respond(500, {"error": "StripeConfigError", "message": str(e)})
+            if not stripe_api_key:
+                return respond(500, {"error": "StripeConfigError", "message": "Stripe secret is empty"})
+            try:
+                stripe.api_key = stripe_api_key
                 session = stripe.checkout.Session.create(
                     mode="subscription",
                     line_items=[{"price": price_id, "quantity": 1}],
@@ -417,9 +686,9 @@ def lambda_handler(event, context):
         # classification endpoint
         if action == "classify":
             if not image_list:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for classification"})}
+                return respond(400, {"error": "Image required for classification"})
             is_graph = asyncio.run(is_graph_image(image_list[0], model_choice))
-            return {"statusCode": 200, "body": json.dumps({"classification": "graph" if is_graph else "not_graph"})}
+            return respond(200, {"classification": "graph" if is_graph else "not_graph"})
 
         # CRUD
         if action == "create":
@@ -429,16 +698,16 @@ def lambda_handler(event, context):
                 body.get("title") or "New Chat",
                 manual_mode=manual_mode_input or False,
             )
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(item))}
+            return respond(200, clean_decimals(item))
         if action == "load":
             item = get_session(user_id, session_id)
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(item or {}))}
+            return respond(200, clean_decimals(item or {}))
         if action == "list":
             items = list_sessions(user_id)
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(items))}
+            return respond(200, clean_decimals(items))
         if action == "delete":
             delete_session(user_id, session_id)
-            return {"statusCode": 200, "body": json.dumps({"deleted": True})}
+            return respond(200, {"deleted": True})
         if action == "update":
             if not user_id or not session_id:
                 return respond(400, {"error": "Missing user_id or session_id"})
@@ -457,7 +726,7 @@ def lambda_handler(event, context):
             if user_id and session_id and get_session(user_id, session_id):
                 append_message(user_id, session_id, "user", "[Manual graph features submitted]")
                 append_message(user_id, session_id, "assistant", result.get("analysis", ""))
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(result))}
+            return respond(200, clean_decimals(result))
         if manual_mode_input is not None and user_id and session_id and get_session(user_id, session_id):
             update_manual_mode(user_id, session_id, manual_mode_input)
 
@@ -468,7 +737,7 @@ def lambda_handler(event, context):
                 return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for graph analysis"})}
+                return respond(400, {"error": "Image required for graph analysis"})
 
             # derivative text redirect
             if text.lower().strip() and any(term in text.lower() for term in [
@@ -498,13 +767,13 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
             usage_info = increment_usage(user_id)
             payload["usage"] = usage_info
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(payload))}
+            return respond(200, clean_decimals(payload))
 
         # CLARIFY GRAPH
         if action == "clarify_graph":
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return {"statusCode": 400, "body": json.dumps({"error": "Image required for graph clarification"})}
+                return respond(400, {"error": "Image required for graph clarification"})
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
             if text:
@@ -518,7 +787,7 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(payload))}
+            return respond(200, clean_decimals(payload))
 
         # SOLVE (unchanged structure, now multi-image)
         if action == "solve":
@@ -526,7 +795,7 @@ def lambda_handler(event, context):
             if isinstance(gate, dict) and gate.get("statusCode"):
                 return gate
             if not text and not image_list:
-                return {"statusCode": 400, "body": json.dumps({"error": "No input provided."})}
+                return respond(400, {"error": "No input provided."})
             if not text and image_list:
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
@@ -548,11 +817,11 @@ def lambda_handler(event, context):
                     "image_url": {"url": f"data:image/png;base64,{img_b64}"},
                 })
             if not user_content:
-                return {"statusCode": 400, "body": json.dumps({"error": "No input provided."})}
+                return respond(400, {"error": "No input provided."})
             messages.append({"role": "user", "content": user_content})
             chat_res = asyncio.run(_chat(messages, 1400))
             if "error" in chat_res:
-                return {"statusCode": 500, "body": json.dumps({"error": "OpenAIError", "details": chat_res["error"]})}
+                return respond(500, {"error": "OpenAIError", "details": chat_res["error"]})
             reply = chat_res["text"]
             code = ""
             code_match = regex.search(r"```(?:python)?(.*?)```", reply, flags=regex.S)
@@ -560,7 +829,7 @@ def lambda_handler(event, context):
             if code and not _verify_expression(code):
                 fix_res = asyncio.run(_chat([{"role": "system", "content": "Fix this SymPy code to match the solution."}, {"role": "user", "content": code}], 300))
                 if "error" in fix_res:
-                    return {"statusCode": 500, "body": json.dumps({"error": "OpenAIError", "details": fix_res["error"]})}
+                    return respond(500, {"error": "OpenAIError", "details": fix_res["error"]})
                 fixed = regex.search(r"```(?:python)?(.*?)```", fix_res["text"], flags=regex.S)
                 if fixed:
                     code = fixed.group(1).strip()
@@ -569,22 +838,27 @@ def lambda_handler(event, context):
                 append_message(user_id, session_id, "user", text)
                 append_message(user_id, session_id, "assistant", reply)
             usage_info = increment_usage(user_id)
-            return {
-                "statusCode": 200,
-                "body": json.dumps(
-                    clean_decimals(
-                        {
-                            "expression": code or "",
-                            "result": result or "",
-                            "steps": reply or "",
-                            "usage": usage_info,
-                        }
-                    )
+            return respond(
+                200,
+                clean_decimals(
+                    {
+                        "expression": code or "",
+                        "result": result or "",
+                        "steps": reply or "",
+                        "usage": usage_info,
+                    }
                 ),
-            }
+            )
 
-        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action}"})}
+        return respond(400, {"error": f"Unknown action: {action_raw}"})
 
-    except Exception:
+    except Exception as exc:
         traceback.print_exc()
-        return {"statusCode": 500, "body": json.dumps({"error": "Internal server error"})}
+        return respond(
+            500,
+            {
+                "error": "Internal server error",
+                "message": str(exc),
+                "config": _config_status(force_refresh=True),
+            },
+        )
