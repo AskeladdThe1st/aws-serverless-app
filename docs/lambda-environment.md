@@ -31,10 +31,6 @@ Set these on the Lambda function (or in your deploy workflow variables) so the c
 | `STRIPE_SUCCESS_URL` | Redirect after successful checkout. | Your app success URL. |
 | `STRIPE_CANCEL_URL` | Redirect after canceled checkout. | Your app cancel URL. |
 | `GUEST_DAILY_LIMIT` | Daily problem limit for free users. | Integer (default `5`). |
-| `CORS_ALLOW_ORIGIN` | Allowed origin(s) for API responses. Comma-separated list or `*`. | Your frontend origin (e.g., `https://main.d2b...cloudfront.net`). |
-| `CORS_ALLOW_HEADERS` | Allowed headers returned in CORS responses. | `content-type` or your custom list. |
-| `CORS_ALLOW_METHODS` | Allowed HTTP methods in CORS responses. | `POST,OPTIONS` or the methods your API supports. |
-| `CORS_ALLOW_CREDENTIALS` | Whether to send `Access-Control-Allow-Credentials: true`. | `false` (set to `true` only if you need cookies/credentials). |
 | `GIT_SHA` | Injected by CI to show deployed revision. | Set by workflow. |
 | `BUILD_TIME` | Injected by CI to show build time. | Set by workflow. |
 
