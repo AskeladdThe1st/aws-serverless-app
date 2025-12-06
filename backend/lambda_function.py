@@ -46,26 +46,7 @@ CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
 GIT_SHA = os.environ.get("GIT_SHA", "unknown")
 BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
-# CORS configuration locked to the Amplify app origin and POST-only requests.
-# If you need a different single origin, set AMPLIFY_APP_URL (or CORS_ALLOW_ORIGIN)
-# to that exact origin. Wildcards and comma-separated lists are rejected.
-AMPLIFY_ORIGIN_DEFAULT = "https://main.d2binnmnc1amly.amplifyapp.com"
-_raw_origin = (
-    os.environ.get("AMPLIFY_APP_URL")
-    or os.environ.get("AMPLIFY_ORIGIN")
-    or os.environ.get("CORS_ALLOW_ORIGIN")
-    or os.environ.get("ALLOWED_ORIGINS")
-    or AMPLIFY_ORIGIN_DEFAULT
-)
-_first_origin = _raw_origin.split(",")[0].strip()
-if not _first_origin or _first_origin == "*":
-    CORS_ALLOW_ORIGIN = AMPLIFY_ORIGIN_DEFAULT
-else:
-    CORS_ALLOW_ORIGIN = _first_origin
-
-CORS_ALLOW_HEADERS = "content-type"
-CORS_ALLOW_METHODS = "POST"
-CORS_ALLOW_CREDENTIALS = False
+# CORS is handled by the Lambda Function URL configuration; no manual CORS headers are set here.
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
@@ -173,15 +154,11 @@ def _verify_expression(code: str) -> bool:
 # ============================================================
 
 def respond(status: int, body: dict, origin: str | None = None):
-    """Return a JSON response with CORS and content-type headers."""
-    chosen_origin = CORS_ALLOW_ORIGIN
+    """Return a JSON response with content-type headers."""
     return {
         "statusCode": status,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": chosen_origin,
-            "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
-            "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
         },
         "body": json.dumps(body),
     }
@@ -506,6 +483,8 @@ def lambda_handler(event, context):
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
         global _REQUEST_ORIGIN
         _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
 
         config = _config_status()
 
