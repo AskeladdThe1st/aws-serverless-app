@@ -50,6 +50,9 @@ BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
 dynamo = boto3.resource("dynamodb", region_name=REGION)
 sessions_table = dynamo.Table(SESSIONS_TABLE)
 usage_table = dynamo.Table(USAGE_TABLE)
+CONFIG_CHECK = None
+CONFIG_CHECK_AT = 0
+CONFIG_TTL_SECONDS = 300
 
 
 # ============================================================
@@ -68,11 +71,38 @@ def clean_decimals(obj):
 
 # ----------------- OpenAI setup -----------------
 
+def _get_openai_api_key() -> str:
+    # Prefer environment variable to keep Lambda portable across accounts.
+    env_key = os.environ.get("OPENAI_API_KEY")
+    if env_key:
+        return env_key
+
+    # Fall back to Secrets Manager if configured.
+    try:
+        secret = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
+            SecretId=OPENAI_SECRET_NAME
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            "OpenAI API key missing. Set OPENAI_API_KEY env var or create the "
+            f"'{OPENAI_SECRET_NAME}' secret: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
+
+    raw = secret.get("SecretString") or ""
+    try:
+        parsed = json.loads(raw)
+        key = parsed.get("api_key") or parsed.get("OPENAI_API_KEY") or parsed.get("key")
+    except Exception:
+        key = raw
+    if not key:
+        raise RuntimeError(
+            "OpenAI API key is empty. Set OPENAI_API_KEY or populate the Secrets Manager value."
+        )
+    return str(key)
+
+
 def _get_client() -> AsyncOpenAI:
-    secret = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
-        SecretId="calculus-agent/openai-key"
-    )
-    return AsyncOpenAI(api_key=secret["SecretString"])
+    return AsyncOpenAI(api_key=_get_openai_api_key())
 
 
 async def safe_openai_json(messages, model, max_tokens=None, temperature=0):
@@ -122,7 +152,17 @@ def _verify_expression(code: str) -> bool:
 # ============================================================
 
 def respond(status: int, body: dict):
-    return {"statusCode": status, "body": json.dumps(body)}
+    """Return a JSON response with CORS and content-type headers."""
+    return {
+        "statusCode": status,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+        "body": json.dumps(body),
+    }
 
 
 def _today():
@@ -147,6 +187,10 @@ def _get_secret_value(secret_name: str):
 
 
 def _get_stripe_api_key() -> str:
+    env_key = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")
+    if env_key:
+        return env_key
+
     raw = _get_secret_value(STRIPE_SECRET_NAME)
     if isinstance(raw, dict):
         return raw.get("api_key") or raw.get("secret") or raw.get("STRIPE_SECRET_KEY") or ""
@@ -154,10 +198,59 @@ def _get_stripe_api_key() -> str:
 
 
 def _get_webhook_secret() -> str:
+    env_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    if env_secret:
+        return env_secret
+
     raw = _get_secret_value(STRIPE_WEBHOOK_SECRET_NAME)
     if isinstance(raw, dict):
         return raw.get("secret") or raw.get("STRIPE_WEBHOOK_SECRET") or ""
     return str(raw)
+
+
+def _config_status(force_refresh: bool = False):
+    """Return configuration diagnostics to surface misconfiguration fast."""
+    global CONFIG_CHECK, CONFIG_CHECK_AT
+
+    now = time.time()
+    if not force_refresh and CONFIG_CHECK and now - CONFIG_CHECK_AT < CONFIG_TTL_SECONDS:
+        return CONFIG_CHECK
+
+    errors, warnings = [], []
+    # DynamoDB table presence
+    try:
+        boto3.client("dynamodb", region_name=REGION).describe_table(TableName=SESSIONS_TABLE)
+    except ClientError as e:
+        errors.append(
+            f"Sessions table '{SESSIONS_TABLE}' not reachable: {e.response.get('Error', {}).get('Message', str(e))}"
+        )
+    try:
+        boto3.client("dynamodb", region_name=REGION).describe_table(TableName=USAGE_TABLE)
+    except ClientError as e:
+        errors.append(
+            f"Usage table '{USAGE_TABLE}' not reachable: {e.response.get('Error', {}).get('Message', str(e))}"
+        )
+
+    # Secrets / env vars
+    if not os.environ.get("OPENAI_API_KEY"):
+        try:
+            _ = _get_openai_api_key()
+        except Exception as e:
+            errors.append(str(e))
+    if not (os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")):
+        try:
+            _ = _get_stripe_api_key()
+        except Exception as e:
+            errors.append(f"Stripe secret missing: {e}")
+    if not os.environ.get("STRIPE_WEBHOOK_SECRET"):
+        try:
+            _ = _get_webhook_secret()
+        except Exception as e:
+            warnings.append(f"Stripe webhook secret unavailable: {e}")
+
+    CONFIG_CHECK = {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
+    CONFIG_CHECK_AT = now
+    return CONFIG_CHECK
 
 
 def get_usage_record(user_id: str) -> dict:
@@ -390,6 +483,8 @@ def lambda_handler(event, context):
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -425,7 +520,7 @@ def lambda_handler(event, context):
             == "OPTIONS"
             or (event.get("httpMethod") or "").upper() == "OPTIONS"
         ):
-            return {"statusCode": 200, "body": json.dumps({"ok": True})}
+            return respond(200, {"ok": True})
 
         # Body parsing
         if "body" in event:
@@ -460,6 +555,17 @@ def lambda_handler(event, context):
         }
         action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
+
+        if not config.get("ok", True) and action != "status":
+            return respond(
+                500,
+                {
+                    "error": "ConfigError",
+                    "message": "Backend configuration is incomplete. Fix the issues below and redeploy.",
+                    "issues": config.get("errors", []),
+                    "warnings": config.get("warnings", []),
+                },
+            )
 
         # Always treat images as a list
         image_single = body.get("image")
@@ -513,7 +619,13 @@ def lambda_handler(event, context):
             if not price_id:
                 return respond(400, {"error": "Missing Stripe price_id"})
             try:
-                stripe.api_key = _get_stripe_api_key()
+                stripe_api_key = _get_stripe_api_key()
+            except Exception as e:
+                return respond(500, {"error": "StripeConfigError", "message": str(e)})
+            if not stripe_api_key:
+                return respond(500, {"error": "StripeConfigError", "message": "Stripe secret is empty"})
+            try:
+                stripe.api_key = stripe_api_key
                 session = stripe.checkout.Session.create(
                     mode="subscription",
                     line_items=[{"price": price_id, "quantity": 1}],
@@ -540,16 +652,16 @@ def lambda_handler(event, context):
                 body.get("title") or "New Chat",
                 manual_mode=manual_mode_input or False,
             )
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(item))}
+            return respond(200, clean_decimals(item))
         if action == "load":
             item = get_session(user_id, session_id)
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(item or {}))}
+            return respond(200, clean_decimals(item or {}))
         if action == "list":
             items = list_sessions(user_id)
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(items))}
+            return respond(200, clean_decimals(items))
         if action == "delete":
             delete_session(user_id, session_id)
-            return {"statusCode": 200, "body": json.dumps({"deleted": True})}
+            return respond(200, {"deleted": True})
         if action == "update":
             if not user_id or not session_id:
                 return respond(400, {"error": "Missing user_id or session_id"})
@@ -568,7 +680,7 @@ def lambda_handler(event, context):
             if user_id and session_id and get_session(user_id, session_id):
                 append_message(user_id, session_id, "user", "[Manual graph features submitted]")
                 append_message(user_id, session_id, "assistant", result.get("analysis", ""))
-            return {"statusCode": 200, "body": json.dumps(clean_decimals(result))}
+            return respond(200, clean_decimals(result))
         if manual_mode_input is not None and user_id and session_id and get_session(user_id, session_id):
             update_manual_mode(user_id, session_id, manual_mode_input)
 
