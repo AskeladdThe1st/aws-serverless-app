@@ -8,6 +8,7 @@ from decimal import Decimal
 from sympy import *
 from openai import AsyncOpenAI
 import stripe
+from botocore.exceptions import ClientError
 
 from graph_engine import (
     extract_graph_features,
@@ -35,16 +36,19 @@ SYSTEM_PROMPT = (
 
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
+SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
 DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
+GIT_SHA = os.environ.get("GIT_SHA", "unknown")
+BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
-sessions_table = dynamo.Table("calculus_sessions")
+sessions_table = dynamo.Table(SESSIONS_TABLE)
 usage_table = dynamo.Table(USAGE_TABLE)
 
 
@@ -126,15 +130,20 @@ def _today():
 
 
 def _get_secret_value(secret_name: str):
-    sec = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
-        SecretId=secret_name
-    )
-    raw = sec.get("SecretString") or ""
     try:
-        parsed = json.loads(raw)
-        return parsed
-    except Exception:
-        return raw
+        sec = boto3.client("secretsmanager", region_name=REGION).get_secret_value(
+            SecretId=secret_name
+        )
+        raw = sec.get("SecretString") or ""
+        try:
+            parsed = json.loads(raw)
+            return parsed
+        except Exception:
+            return raw
+    except ClientError as e:
+        raise RuntimeError(
+            f"Unable to read secret '{secret_name}': {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def _get_stripe_api_key() -> str:
@@ -152,24 +161,29 @@ def _get_webhook_secret() -> str:
 
 
 def get_usage_record(user_id: str) -> dict:
-    resp = usage_table.get_item(Key={"user_id": user_id})
-    item = resp.get("Item") or {}
-    today = _today()
-    if not item:
-        item = {
-            "user_id": user_id,
-            "plan": "free",
-            "subscription_status": "inactive",
-            "usage_date": today,
-            "usage_count": 0,
-        }
-        usage_table.put_item(Item=item)
+    try:
+        resp = usage_table.get_item(Key={"user_id": user_id})
+        item = resp.get("Item") or {}
+        today = _today()
+        if not item:
+            item = {
+                "user_id": user_id,
+                "plan": "free",
+                "subscription_status": "inactive",
+                "usage_date": today,
+                "usage_count": 0,
+            }
+            usage_table.put_item(Item=item)
+            return item
+        if item.get("usage_date") != today:
+            item["usage_date"] = today
+            item["usage_count"] = 0
+            usage_table.put_item(Item=item)
         return item
-    if item.get("usage_date") != today:
-        item["usage_date"] = today
-        item["usage_count"] = 0
-        usage_table.put_item(Item=item)
-    return item
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB get_usage_record failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def calculate_usage_info(user_id: str) -> dict:
@@ -189,23 +203,33 @@ def calculate_usage_info(user_id: str) -> dict:
 
 
 def increment_usage(user_id: str) -> dict:
-    record = get_usage_record(user_id)
-    record["usage_date"] = _today()
-    record["usage_count"] = int(record.get("usage_count") or 0) + 1
-    usage_table.put_item(Item=record)
-    return calculate_usage_info(user_id)
+    try:
+        record = get_usage_record(user_id)
+        record["usage_date"] = _today()
+        record["usage_count"] = int(record.get("usage_count") or 0) + 1
+        usage_table.put_item(Item=record)
+        return calculate_usage_info(user_id)
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB increment_usage failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_subscription(user_id: str, status: str, customer_id: str = None, subscription_id: str = None):
-    record = get_usage_record(user_id)
-    record["subscription_status"] = status
-    record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
-    if customer_id:
-        record["stripe_customer_id"] = customer_id
-    if subscription_id:
-        record["subscription_id"] = subscription_id
-    usage_table.put_item(Item=record)
-    return record
+    try:
+        record = get_usage_record(user_id)
+        record["subscription_status"] = status
+        record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
+        if customer_id:
+            record["stripe_customer_id"] = customer_id
+        if subscription_id:
+            record["subscription_id"] = subscription_id
+        usage_table.put_item(Item=record)
+        return record
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_subscription failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def enforce_usage(user_id: str):
@@ -222,66 +246,101 @@ def enforce_usage(user_id: str):
     return info
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
-    item = {
-        "user_id": user_id,
-        "session_id": session_id,
-        "title": title,
-        "manual_mode": bool(manual_mode),
-        "messages": [],
-        "createdAt": int(time.time()),
-        "updatedAt": int(time.time()),
-    }
-    sessions_table.put_item(Item=item)
-    return item
+    try:
+        item = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "title": title,
+            "manual_mode": bool(manual_mode),
+            "messages": [],
+            "createdAt": int(time.time()),
+            "updatedAt": int(time.time()),
+        }
+        sessions_table.put_item(Item=item)
+        return item
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB create_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def get_session(user_id, session_id):
-    resp = sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
-    return resp.get("Item")
+    try:
+        resp = sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
+        return resp.get("Item")
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB get_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def list_sessions(user_id):
     from boto3.dynamodb.conditions import Key
 
-    resp = sessions_table.query(
-        KeyConditionExpression=Key("user_id").eq(user_id)
-    )
-    return resp.get("Items", [])
+    try:
+        resp = sessions_table.query(
+            KeyConditionExpression=Key("user_id").eq(user_id)
+        )
+        return resp.get("Items", [])
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB list_sessions failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def append_message(user_id, session_id, role, content):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET messages = list_append(messages, :msg), updatedAt = :t",
-        ExpressionAttributeValues={
-            ":msg": [{"role": role, "content": content, "ts": now}],
-            ":t": now,
-        },
-    )
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET messages = list_append(messages, :msg), updatedAt = :t",
+            ExpressionAttributeValues={
+                ":msg": [{"role": role, "content": content, "ts": now}],
+                ":t": now,
+            },
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB append_message failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def delete_session(user_id, session_id):
-    sessions_table.delete_item(Key={"user_id": user_id, "session_id": session_id})
+    try:
+        sessions_table.delete_item(Key={"user_id": user_id, "session_id": session_id})
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB delete_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_title(user_id, session_id, title):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET title = :title, updatedAt = :t",
-        ExpressionAttributeValues={":title": title, ":t": now},
-    )
-    return {"updated": True}
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET title = :title, updatedAt = :t",
+            ExpressionAttributeValues={":title": title, ":t": now},
+        )
+        return {"updated": True}
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_title failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 
 def update_manual_mode(user_id, session_id, manual_mode):
     now = int(time.time())
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET manual_mode = :mm, updatedAt = :t",
-        ExpressionAttributeValues={":mm": bool(manual_mode), ":t": now},
-    )
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET manual_mode = :mm, updatedAt = :t",
+            ExpressionAttributeValues={":mm": bool(manual_mode), ":t": now},
+        )
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_manual_mode failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 def update_session(user_id, session_id, fields: dict):
     now = int(time.time())
@@ -292,12 +351,17 @@ def update_session(user_id, session_id, fields: dict):
         eav[f":{k}"] = v
     set_parts.append("updatedAt = :t")
     update_expr = "SET " + ", ".join(set_parts)
-    sessions_table.update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression=update_expr,
-        ExpressionAttributeValues=eav,
-    )
-    return {"updated": True}
+    try:
+        sessions_table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=eav,
+        )
+        return {"updated": True}
+    except ClientError as e:
+        raise RuntimeError(
+            f"DynamoDB update_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
+        ) from e
 
 # ============================================================
 #                GRAPH RESPONSE NORMALIZER
@@ -366,14 +430,35 @@ def lambda_handler(event, context):
         # Body parsing
         if "body" in event:
             raw = event.get("body") or "{}"
-            if isinstance(raw, str):
-                body = json.loads(raw)
-            else:
-                body = raw
+            try:
+                body = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            except json.JSONDecodeError as e:
+                return respond(
+                    400,
+                    {
+                        "error": "BadRequest",
+                        "message": "Request body must be valid JSON",
+                        "details": str(e),
+                    },
+                )
         else:
-            body = event
+            body = event or {}
 
-        action = body.get("action", "solve")
+        action_raw = body.get("action", "solve")
+        action_input = str(action_raw).strip()
+        # Normalize action names so variants like "stripe-checkout" and
+        # "stripe checkout" resolve to the same handler.
+        action_key = regex.sub(r"[^a-z0-9]+", "_", action_input.lower()).strip("_")
+        alias_map = {
+            "stripe_checkout": "stripe_checkout",
+            "stripecheckout": "stripe_checkout",
+            "stripe-checkout": "stripe_checkout",
+            "stripe checkout": "stripe_checkout",
+            "status": "status",
+            "health": "status",
+            "version": "status",
+        }
+        action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
 
         # Always treat images as a list
@@ -394,10 +479,36 @@ def lambda_handler(event, context):
         session_id = body.get("session_id")
         manual_mode_input = body.get("manual_mode")
 
+        if action == "status":
+            return respond(
+                200,
+                {
+                    "status": "ok",
+                    "git_sha": GIT_SHA,
+                    "build_time": BUILD_TIME,
+                    "known_actions": sorted(
+                        {
+                            "usage",
+                            "stripe_checkout",
+                            "classify",
+                            "create",
+                            "load",
+                            "list",
+                            "delete",
+                            "update",
+                            "manual_graph",
+                            "graph",
+                            "clarify_graph",
+                            "solve",
+                        }
+                    ),
+                },
+            )
+
         if action == "usage":
             return respond(200, {"usage": calculate_usage_info(user_id)})
 
-        if action == "stripe_checkout":
+        if action in {"stripe_checkout", "stripe-checkout", "stripe checkout"}:
             price_id = body.get("price_id") or DEFAULT_PRICE_ID
             if not price_id:
                 return respond(400, {"error": "Missing Stripe price_id"})
@@ -583,8 +694,11 @@ def lambda_handler(event, context):
                 ),
             }
 
-        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action}"})}
+        return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action_raw}"})}
 
-    except Exception:
+    except Exception as exc:
         traceback.print_exc()
-        return {"statusCode": 500, "body": json.dumps({"error": "Internal server error"})}
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal server error", "message": str(exc)}),
+        }
