@@ -40,13 +40,29 @@ SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
 OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
-DEFAULT_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
+STRIPE_PRICE_STUDENT = os.environ.get("STRIPE_PRICE_STUDENT")
+STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
-GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "5"))
+FREE_DAILY_LIMIT = int(os.environ.get("FREE_DAILY_LIMIT", "15"))
+GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "4"))
 GIT_SHA = os.environ.get("GIT_SHA", "unknown")
 BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
 # CORS is handled by the Lambda Function URL configuration; no manual CORS headers are set here.
+
+PRO_MODELS = {
+    "gpt-5.1",
+    "gpt-5.1-turbo",
+    "gpt-5.1-flash",
+    "gpt-5.1-thinking",
+}
+ALLOWED_MODELS = {
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-4.1-preview",
+    *PRO_MODELS,
+}
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
@@ -252,7 +268,15 @@ def _config_status(force_refresh: bool = False):
     return CONFIG_CHECK
 
 
-def get_usage_record(user_id: str) -> dict:
+def _normalize_plan(record: dict, user_role: str) -> str:
+    plan = (record.get("plan") or "").lower()
+    if plan not in {"guest", "free", "pro"}:
+        plan = "guest" if user_role == "guest" else "free"
+        record["plan"] = plan
+    return plan
+
+
+def get_usage_record(user_id: str, user_role: str = "guest") -> dict:
     try:
         resp = usage_table.get_item(Key={"user_id": user_id})
         item = resp.get("Item") or {}
@@ -260,13 +284,14 @@ def get_usage_record(user_id: str) -> dict:
         if not item:
             item = {
                 "user_id": user_id,
-                "plan": "free",
+                "plan": "guest" if user_role == "guest" else "free",
                 "subscription_status": "inactive",
                 "usage_date": today,
                 "usage_count": 0,
             }
             usage_table.put_item(Item=item)
             return item
+        _normalize_plan(item, user_role)
         if item.get("usage_date") != today:
             item["usage_date"] = today
             item["usage_count"] = 0
@@ -278,29 +303,35 @@ def get_usage_record(user_id: str) -> dict:
         ) from e
 
 
-def calculate_usage_info(user_id: str) -> dict:
-    record = get_usage_record(user_id)
+def calculate_usage_info(user_id: str, user_role: str = "guest") -> dict:
+    record = get_usage_record(user_id, user_role)
+    plan = _normalize_plan(record, user_role)
     status = (record.get("subscription_status") or "inactive").lower()
-    limit = None if status in {"active", "trialing", "past_due"} else GUEST_DAILY_LIMIT
+    is_paid = plan == "pro" or status in {"active", "trialing", "past_due"}
+    limit = None if is_paid else (FREE_DAILY_LIMIT if plan == "free" else GUEST_DAILY_LIMIT)
     used = int(record.get("usage_count") or 0)
     problems_left = None if limit is None else max(limit - used, 0)
+    login_required = plan == "guest" and limit is not None and problems_left <= 0
+    upgrade_required = plan == "free" and limit is not None and problems_left <= 0
     return {
-        "plan": record.get("plan", "free"),
+        "plan": plan,
         "subscription_status": status,
         "limit": limit,
         "used_today": used,
         "problems_left": problems_left,
         "upgrade_required": False if limit is None else problems_left <= 0,
+        "login_required": login_required,
+        "is_paid": is_paid,
     }
 
 
-def increment_usage(user_id: str) -> dict:
+def increment_usage(user_id: str, user_role: str = "guest") -> dict:
     try:
-        record = get_usage_record(user_id)
+        record = get_usage_record(user_id, user_role)
         record["usage_date"] = _today()
         record["usage_count"] = int(record.get("usage_count") or 0) + 1
         usage_table.put_item(Item=record)
-        return calculate_usage_info(user_id)
+        return calculate_usage_info(user_id, user_role)
     except ClientError as e:
         raise RuntimeError(
             f"DynamoDB increment_usage failed: {e.response.get('Error', {}).get('Message', str(e))}"
@@ -309,9 +340,9 @@ def increment_usage(user_id: str) -> dict:
 
 def update_subscription(user_id: str, status: str, customer_id: str = None, subscription_id: str = None):
     try:
-        record = get_usage_record(user_id)
+        record = get_usage_record(user_id, "user")
         record["subscription_status"] = status
-        record["plan"] = "paid" if status in {"active", "trialing", "past_due"} else "free"
+        record["plan"] = "pro" if status in {"active", "trialing", "past_due"} else "free"
         if customer_id:
             record["stripe_customer_id"] = customer_id
         if subscription_id:
@@ -324,18 +355,57 @@ def update_subscription(user_id: str, status: str, customer_id: str = None, subs
         ) from e
 
 
-def enforce_usage(user_id: str):
-    info = calculate_usage_info(user_id)
+def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
+    info = calculate_usage_info(user_id, user_role)
+    wants_pro_model = requested_model in PRO_MODELS
+    if wants_pro_model and not info.get("is_paid"):
+        return respond(
+            403,
+            {
+                "error": "pro_model_locked",
+                "message": "Pro models require an active Pro subscription.",
+                "usage": info,
+                "upgrade_required": True,
+            },
+        )
+
     if info["limit"] is not None and info.get("problems_left", 0) <= 0:
+        if info.get("plan") == "guest":
+            return respond(
+                429,
+                {
+                    "error": "guest_limit_reached",
+                    "message": "Guests get 4 problems per day. Log in for more.",
+                    "usage": info,
+                    "login_required": True,
+                },
+            )
         return respond(
             429,
             {
                 "error": "limit_reached",
                 "message": "Daily limit reached. Upgrade to continue.",
                 "usage": info,
+                "upgrade_required": True,
             },
         )
     return info
+
+
+def enforce_model_access(user_id: str, user_role: str, requested_model: str | None):
+    if requested_model in PRO_MODELS:
+        info = calculate_usage_info(user_id, user_role)
+        if not info.get("is_paid"):
+            return respond(
+                403,
+                {
+                    "error": "pro_model_locked",
+                    "message": "Pro models require an active Pro subscription.",
+                    "usage": info,
+                    "upgrade_required": True,
+                },
+            )
+    return None
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
     try:
@@ -492,6 +562,8 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -591,10 +663,10 @@ def lambda_handler(event, context):
 
         # Model selection
         requested_model = body.get("model") or "gpt-4o-mini"
-        allowed_models = {"gpt-4o-mini", "gpt-4o", "gpt-5.1", "gpt-5.1-thinking"}
-        model_choice = requested_model if requested_model in allowed_models else "gpt-4o-mini"
+        model_choice = requested_model if requested_model in ALLOWED_MODELS else "gpt-4o-mini"
 
-        user_id = body.get("user_id") or "guest"
+        user_id = str(body.get("user_id") or "guest")
+        user_role = (body.get("user_role") or ("guest" if user_id == "guest" else "user")).lower()
         session_id = body.get("session_id")
         manual_mode_input = body.get("manual_mode")
 
@@ -626,12 +698,19 @@ def lambda_handler(event, context):
             )
 
         if action == "usage":
-            return respond(200, {"usage": calculate_usage_info(user_id)})
+            return respond(200, {"usage": calculate_usage_info(user_id, user_role)})
 
         if action in {"stripe_checkout", "stripe-checkout", "stripe checkout"}:
-            price_id = body.get("price_id") or DEFAULT_PRICE_ID
+            plan_choice = str(body.get("plan") or "student").lower()
+            if plan_choice not in {"student", "pro"}:
+                plan_choice = "student"
+            price_id = None
+            if plan_choice == "pro":
+                price_id = body.get("price_id") or STRIPE_PRICE_PRO
+            else:
+                price_id = body.get("price_id") or STRIPE_PRICE_STUDENT
             if not price_id:
-                return respond(400, {"error": "Missing Stripe price_id"})
+                return respond(400, {"error": "Missing Stripe price_id for selected plan"})
             try:
                 stripe_api_key = _get_stripe_api_key()
             except Exception as e:
@@ -645,14 +724,23 @@ def lambda_handler(event, context):
                     line_items=[{"price": price_id, "quantity": 1}],
                     success_url=body.get("success_url") or SUCCESS_URL,
                     cancel_url=body.get("cancel_url") or CANCEL_URL,
-                    metadata={"user_id": user_id},
+                    metadata={"user_id": user_id, "plan": plan_choice},
                 )
-                return respond(200, {"checkout_url": session.url, "usage": calculate_usage_info(user_id)})
+                return respond(
+                    200,
+                    {
+                        "checkout_url": session.url,
+                        "usage": calculate_usage_info(user_id, user_role),
+                    },
+                )
             except Exception as e:
                 return respond(500, {"error": "StripeError", "message": str(e)})
 
         # classification endpoint
         if action == "classify":
+            gate = enforce_model_access(user_id, user_role, model_choice)
+            if gate:
+                return gate
             if not image_list:
                 return respond(400, {"error": "Image required for classification"})
             is_graph = asyncio.run(is_graph_image(image_list[0], model_choice))
@@ -700,7 +788,7 @@ def lambda_handler(event, context):
 
         # GRAPH
         if action == "graph":
-            gate = enforce_usage(user_id)
+            gate = enforce_usage(user_id, user_role, model_choice)
             if isinstance(gate, dict) and gate.get("statusCode"):
                 return gate
             graph_image = image_list[0] if image_list else None
@@ -733,12 +821,15 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
-            usage_info = increment_usage(user_id)
+            usage_info = increment_usage(user_id, user_role)
             payload["usage"] = usage_info
             return respond(200, clean_decimals(payload))
 
         # CLARIFY GRAPH
         if action == "clarify_graph":
+            gate = enforce_model_access(user_id, user_role, model_choice)
+            if gate:
+                return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
                 return respond(400, {"error": "Image required for graph clarification"})
@@ -759,7 +850,7 @@ def lambda_handler(event, context):
 
         # SOLVE (unchanged structure, now multi-image)
         if action == "solve":
-            gate = enforce_usage(user_id)
+            gate = enforce_usage(user_id, user_role, model_choice)
             if isinstance(gate, dict) and gate.get("statusCode"):
                 return gate
             if not text and not image_list:
@@ -805,7 +896,7 @@ def lambda_handler(event, context):
             if user_id and session_id and session:
                 append_message(user_id, session_id, "user", text)
                 append_message(user_id, session_id, "assistant", reply)
-            usage_info = increment_usage(user_id)
+            usage_info = increment_usage(user_id, user_role)
             return respond(
                 200,
                 clean_decimals(

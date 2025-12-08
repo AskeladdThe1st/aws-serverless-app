@@ -8,6 +8,7 @@ import {
 } from "aws-amplify/auth";
 
 interface User {
+  sub?: string;
   email: string;
   name?: string;
   picture?: string;
@@ -52,6 +53,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email.split("@")[0];
 
       setUser({
+        sub: claims.sub as string,
         email,
         name,
         picture: claims.picture as string,

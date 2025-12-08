@@ -27,15 +27,16 @@ Set these on the Lambda function (or in your deploy workflow variables) so the c
 | `STRIPE_SECRET_NAME` | Secrets Manager name for Stripe secret. | `calculus-agent/stripe-secret` (if not using env key). |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (skip if using Secrets Manager). | Your webhook secret. |
 | `STRIPE_WEBHOOK_SECRET_NAME` | Secrets Manager name for webhook secret. | `calculus-agent/stripe-webhook` (if not using env secret). |
-| `STRIPE_PRICE_ID` | Default price ID used when starting checkout. | Your active Stripe price ID. |
+| `STRIPE_PRICE_STUDENT` | Stripe price ID used for the Student Plus plan. | Your Student Plus price ID. |
+| `STRIPE_PRICE_PRO` | Stripe price ID used for the Pro plan. | Your Pro price ID. |
 | `STRIPE_SUCCESS_URL` | Redirect after successful checkout. | Your app success URL. |
 | `STRIPE_CANCEL_URL` | Redirect after canceled checkout. | Your app cancel URL. |
-| `GUEST_DAILY_LIMIT` | Daily problem limit for free users. | Integer (default `5`). |
-| `CORS_ALLOW_ORIGIN` (or `AMPLIFY_APP_URL`) | **Single** allowed origin for API responses. Wildcards and comma-separated lists are ignored. | `https://main.d2binnmnc1amly.amplifyapp.com` (set to your Amplify app URL). |
+| `FREE_DAILY_LIMIT` | Daily problem limit for signed-in free users. | Integer (default `15`). |
+| `GUEST_DAILY_LIMIT` | Daily problem limit for guest users. | Integer (default `4`). |
 | `GIT_SHA` | Injected by CI to show deployed revision. | Set by workflow. |
 | `BUILD_TIME` | Injected by CI to show build time. | Set by workflow. |
 
-**CORS is intentionally strict:** responses always send `Access-Control-Allow-Origin` set to the single configured Amplify URL, `Access-Control-Allow-Headers: content-type`, `Access-Control-Allow-Methods: POST`, and never include `Access-Control-Allow-Credentials`. Update the origin variable above if your Amplify URL changes.
+**CORS is handled by the Lambda Function URL configuration.** Set allowed origins/headers/methods on the Function URL instead of injecting headers in code.
 
 ## Optional/operational tips
 - If you rely on Secrets Manager, ensure the Lambda execution role can `secretsmanager:GetSecretValue` for the configured secret names and `dynamodb:*` (or precise CRUD actions) on the session/usage tables.
