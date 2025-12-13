@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
@@ -8,6 +8,7 @@ import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
+import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -20,7 +21,6 @@ interface ChatSession {
   clarificationImagePreview?: string; // Store the image_preview from backend response
 }
 
-const PRO_MODELS = ['gpt-5.1', 'gpt-5.1-turbo', 'gpt-5.1-flash', 'gpt-5.1-thinking'];
 
 const Index = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -45,17 +45,41 @@ const Index = () => {
 
   const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
-  const getIdentity = () => {
+  const getIdentity = useCallback(() => {
     const userId = user ? (user as any).sub || user.email : getOrCreateUserId();
     const userRole: 'guest' | 'user' = user ? 'user' : 'guest';
     return { userId, userRole };
-  };
+  }, [user]);
 
-  const isProUser = usage && (usage.plan === 'pro' || ['active', 'trialing', 'past_due'].includes((usage.subscription_status || '').toLowerCase()));
-  const guestLimitReached = usage?.plan === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
-  const freeLimitReached = usage?.plan === 'free' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+  const getPlan = useCallback((): 'guest' | 'free' | 'student' | 'pro' => {
+    const status = (usage?.subscription_status || '').toLowerCase();
+    let plan = (usage?.plan || (user ? 'free' : 'guest')).toLowerCase();
+    if (plan === 'guest' && user) plan = 'free';
+    if (!['guest', 'free', 'student', 'pro'].includes(plan)) {
+      plan = user ? 'free' : 'guest';
+    }
+    if (!['pro', 'student'].includes(plan) && ['active', 'trialing', 'past_due'].includes(status)) {
+      plan = 'student';
+    }
+    return plan as 'guest' | 'free' | 'student' | 'pro';
+  }, [usage?.plan, usage?.subscription_status, user]);
 
-  const refreshUsage = async () => {
+  const getModelAccess = useCallback((modelId: string): ModelAccessState => {
+    const plan = getPlan();
+    const model = MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
+    if (model.tier === 'pro') {
+      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: model.tier };
+    }
+    if (model.tier === 'student' && plan === 'guest') {
+      return { locked: true, reason: 'login', tier: model.tier };
+    }
+    return { locked: false, tier: model.tier };
+  }, [getPlan]);
+
+  const guestLimitReached = getPlan() === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+  const freeLimitReached = getPlan() === 'free' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+
+  const refreshUsage = useCallback(async () => {
     try {
       const { userId, userRole } = getIdentity();
       const usagePayload = await fetchUsage(userId, userRole);
@@ -66,7 +90,7 @@ const Index = () => {
       console.error('Failed to load usage', error);
       return null;
     }
-  };
+  }, [getIdentity]);
 
   const parseLambdaResponse = async (res: Response) => {
     let data: any = null;
@@ -130,8 +154,7 @@ const Index = () => {
     };
 
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user]);
+  }, [authLoading, getIdentity, refreshUsage]);
 
   // Force KaTeX to re-render after new messages
   useEffect(() => {
@@ -166,6 +189,31 @@ const Index = () => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isLoading, toast]);
+
+  useEffect(() => {
+    const access = getModelAccess(selectedModel);
+    if (access.locked) {
+      const fallback = MODEL_OPTIONS.find(m => !getModelAccess(m.id).locked);
+      if (fallback) {
+        setSelectedModel(fallback.id);
+      }
+    }
+  }, [getModelAccess, selectedModel]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshUsage();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshUsage]);
+
+  useEffect(() => {
+    if (!isPricingOpen) {
+      refreshUsage();
+    }
+  }, [isPricingOpen, refreshUsage]);
 
   const createNewChat = async () => {
     try {
@@ -302,6 +350,27 @@ const Index = () => {
     setInputValue(text);
   };
 
+  const handleLockedModelSelect = useCallback((modelId: string, access: ModelAccessState) => {
+    const model = MODEL_OPTIONS.find(m => m.id === modelId);
+    if (access.reason === 'login') {
+      toast({
+        title: 'Sign in required',
+        description: 'Create a free account to use this model.',
+        variant: 'destructive'
+      });
+      setIsLoginOpen(true);
+      return;
+    }
+    toast({
+      title: 'Upgrade required',
+      description: model?.tier === 'pro'
+        ? 'Upgrade to Pro to access GPT-5 models.'
+        : 'Upgrade your plan to unlock this model.',
+      variant: 'destructive'
+    });
+    setIsPricingOpen(true);
+  }, [toast]);
+
   const handlePlanSelect = async (planId: string, priceId?: string) => {
     try {
       if (planId === 'free') {
@@ -335,13 +404,9 @@ const Index = () => {
   };
 
   const handleModelChange = (modelId: string) => {
-    if (PRO_MODELS.includes(modelId) && !isProUser) {
-      toast({
-        title: 'Pro model locked',
-        description: 'Upgrade to Pro to access GPT-5 models.',
-        variant: 'destructive'
-      });
-      setIsPricingOpen(true);
+    const access = getModelAccess(modelId);
+    if (access.locked) {
+      handleLockedModelSelect(modelId, access);
       return;
     }
     setSelectedModel(modelId);
@@ -354,19 +419,13 @@ const Index = () => {
     const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId || !sessionId) return;
 
-    const usageInfo = await refreshUsage();
-    const selectedIsPro = PRO_MODELS.includes(selectedModel);
-    const paid = usageInfo && (usageInfo.plan === 'pro' || ['active', 'trialing', 'past_due'].includes((usageInfo.subscription_status || '').toLowerCase()));
-
-    if (selectedIsPro && !paid) {
-      toast({
-        title: 'Pro model locked',
-        description: 'Upgrade to Pro to use GPT-5 models.',
-        variant: 'destructive'
-      });
-      setIsPricingOpen(true);
+    const modelAccess = getModelAccess(selectedModel);
+    if (modelAccess.locked) {
+      handleLockedModelSelect(selectedModel, modelAccess);
       return;
     }
+
+    const usageInfo = await refreshUsage();
 
     if (usageInfo?.plan === 'guest' && usageInfo?.limit !== null && (usageInfo?.problems_left ?? 0) <= 0) {
       toast({
@@ -849,7 +908,9 @@ const Index = () => {
                 onSend={handleSend}
                 disabled={isLoading || limitReached}
                 selectedModel={selectedModel}
-              onModelChange={handleModelChange}
+                onModelChange={handleModelChange}
+                modelAccess={getModelAccess}
+                onModelLockedSelect={handleLockedModelSelect}
                 mode={mode}
                 onModeChange={setMode}
                 onToolSelect={handleToolSelect}
@@ -898,7 +959,9 @@ const Index = () => {
               onSend={handleSend}
               disabled={isLoading || limitReached}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={handleModelChange}
+              modelAccess={getModelAccess}
+              onModelLockedSelect={handleLockedModelSelect}
               mode={mode}
               onModeChange={setMode}
               onToolSelect={handleToolSelect}
@@ -915,6 +978,8 @@ const Index = () => {
         onClose={() => setIsSettingsOpen(false)}
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
+        modelAccess={getModelAccess}
+        onModelLockedSelect={handleLockedModelSelect}
         showMoreSteps={showMoreSteps}
         onShowMoreStepsChange={setShowMoreSteps}
         conciseAnswers={conciseAnswers}

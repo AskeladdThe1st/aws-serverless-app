@@ -56,13 +56,15 @@ PRO_MODELS = {
     "gpt-5.1-flash",
     "gpt-5.1-thinking",
 }
-ALLOWED_MODELS = {
-    "gpt-4o-mini",
-    "gpt-4o",
+STUDENT_MODELS = {
     "gpt-4.1",
     "gpt-4.1-preview",
-    *PRO_MODELS,
 }
+FREE_MODELS = {
+    "gpt-4o-mini",
+    "gpt-4o",
+}
+ALLOWED_MODELS = {*FREE_MODELS, *STUDENT_MODELS, *PRO_MODELS}
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
@@ -270,7 +272,7 @@ def _config_status(force_refresh: bool = False):
 
 def _normalize_plan(record: dict, user_role: str) -> str:
     plan = (record.get("plan") or "").lower()
-    if plan not in {"guest", "free", "pro"}:
+    if plan not in {"guest", "free", "student", "pro"}:
         plan = "guest" if user_role == "guest" else "free"
         record["plan"] = plan
     return plan
@@ -307,7 +309,7 @@ def calculate_usage_info(user_id: str, user_role: str = "guest") -> dict:
     record = get_usage_record(user_id, user_role)
     plan = _normalize_plan(record, user_role)
     status = (record.get("subscription_status") or "inactive").lower()
-    is_paid = plan == "pro" or status in {"active", "trialing", "past_due"}
+    is_paid = plan in {"student", "pro"} or status in {"active", "trialing", "past_due"}
     limit = None if is_paid else (FREE_DAILY_LIMIT if plan == "free" else GUEST_DAILY_LIMIT)
     used = int(record.get("usage_count") or 0)
     problems_left = None if limit is None else max(limit - used, 0)
@@ -338,11 +340,26 @@ def increment_usage(user_id: str, user_role: str = "guest") -> dict:
         ) from e
 
 
-def update_subscription(user_id: str, status: str, customer_id: str = None, subscription_id: str = None):
+def update_subscription(
+    user_id: str,
+    status: str,
+    customer_id: str = None,
+    subscription_id: str = None,
+    plan_type: str | None = None,
+):
     try:
+        if plan_type:
+            plan_type = str(plan_type).lower()
+            if plan_type not in {"student", "pro", "free"}:
+                plan_type = "pro"
         record = get_usage_record(user_id, "user")
         record["subscription_status"] = status
-        record["plan"] = "pro" if status in {"active", "trialing", "past_due"} else "free"
+        if plan_type:
+            record["plan"] = plan_type
+        elif status not in {"active", "trialing", "past_due"}:
+            record["plan"] = "free"
+        elif record.get("plan") not in {"student", "pro"}:
+            record["plan"] = "pro"
         if customer_id:
             record["stripe_customer_id"] = customer_id
         if subscription_id:
@@ -355,10 +372,17 @@ def update_subscription(user_id: str, status: str, customer_id: str = None, subs
         ) from e
 
 
-def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
-    info = calculate_usage_info(user_id, user_role)
-    wants_pro_model = requested_model in PRO_MODELS
-    if wants_pro_model and not info.get("is_paid"):
+def check_model_entitlement(
+    user_id: str, user_role: str, requested_model: str | None, usage_info: dict | None = None
+):
+    if not requested_model:
+        return None
+    if requested_model not in ALLOWED_MODELS:
+        return respond(400, {"error": "unsupported_model", "message": "Model not available"})
+    info = usage_info or calculate_usage_info(user_id, user_role)
+    plan = info.get("plan")
+
+    if requested_model in PRO_MODELS and plan != "pro":
         return respond(
             403,
             {
@@ -368,6 +392,25 @@ def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str |
                 "upgrade_required": True,
             },
         )
+
+    if requested_model in STUDENT_MODELS and user_role == "guest":
+        return respond(
+            401,
+            {
+                "error": "login_required",
+                "message": "Sign in to use advanced models.",
+                "usage": info,
+                "login_required": True,
+            },
+        )
+    return None
+
+
+def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
+    info = calculate_usage_info(user_id, user_role)
+    entitlement_gate = check_model_entitlement(user_id, user_role, requested_model, info)
+    if entitlement_gate:
+        return entitlement_gate
 
     if info["limit"] is not None and info.get("problems_left", 0) <= 0:
         if info.get("plan") == "guest":
@@ -393,19 +436,7 @@ def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str |
 
 
 def enforce_model_access(user_id: str, user_role: str, requested_model: str | None):
-    if requested_model in PRO_MODELS:
-        info = calculate_usage_info(user_id, user_role)
-        if not info.get("is_paid"):
-            return respond(
-                403,
-                {
-                    "error": "pro_model_locked",
-                    "message": "Pro models require an active Pro subscription.",
-                    "usage": info,
-                    "upgrade_required": True,
-                },
-            )
-    return None
+    return check_model_entitlement(user_id, user_role, requested_model)
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
     try:
@@ -564,6 +595,8 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -583,11 +616,23 @@ def lambda_handler(event, context):
                 metadata = data_obj.get("metadata") or {}
                 user_meta = dict(metadata)
                 uid = user_meta.get("user_id") or user_meta.get("userId") or "guest"
-                update_subscription(uid, data_obj.get("status", "active"), data_obj.get("customer"), data_obj.get("subscription"))
+                update_subscription(
+                    uid,
+                    data_obj.get("status", "active"),
+                    data_obj.get("customer"),
+                    data_obj.get("subscription"),
+                    plan_type=user_meta.get("plan"),
+                )
             elif evt_type == "customer.subscription.deleted":
                 metadata = data_obj.get("metadata") or {}
                 uid = metadata.get("user_id") or metadata.get("userId") or "guest"
-                update_subscription(uid, data_obj.get("status", "canceled"), data_obj.get("customer"), data_obj.get("id"))
+                update_subscription(
+                    uid,
+                    data_obj.get("status", "canceled"),
+                    data_obj.get("customer"),
+                    data_obj.get("id"),
+                    plan_type="free",
+                )
             return respond(200, {"received": True})
 
         # CORS preflight
