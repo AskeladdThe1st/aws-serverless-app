@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { ChatSidebar, Chat } from '@/components/ChatSidebar';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { PricingModal } from '@/components/PricingModal';
+import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
+import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -18,6 +21,7 @@ interface ChatSession {
   clarificationImagePreview?: string; // Store the image_preview from backend response
 }
 
+
 const Index = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
@@ -27,6 +31,7 @@ const Index = () => {
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [showMoreSteps, setShowMoreSteps] = useState(false);
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
@@ -34,15 +39,50 @@ const Index = () => {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
   const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
-  const refreshUsage = async () => {
+  const getIdentity = useCallback(() => {
+    const userId = user ? (user as any).sub || user.email : getOrCreateUserId();
+    const userRole: 'guest' | 'user' = user ? 'user' : 'guest';
+    return { userId, userRole };
+  }, [user]);
+
+  const getPlan = useCallback((): 'guest' | 'free' | 'student' | 'pro' => {
+    const status = (usage?.subscription_status || '').toLowerCase();
+    let plan = (usage?.plan || (user ? 'free' : 'guest')).toLowerCase();
+    if (plan === 'guest' && user) plan = 'free';
+    if (!['guest', 'free', 'student', 'pro'].includes(plan)) {
+      plan = user ? 'free' : 'guest';
+    }
+    if (!['pro', 'student'].includes(plan) && ['active', 'trialing', 'past_due'].includes(status)) {
+      plan = 'student';
+    }
+    return plan as 'guest' | 'free' | 'student' | 'pro';
+  }, [usage?.plan, usage?.subscription_status, user]);
+
+  const getModelAccess = useCallback((modelId: string): ModelAccessState => {
+    const plan = getPlan();
+    const model = MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
+    if (model.tier === 'pro') {
+      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: model.tier };
+    }
+    if (model.tier === 'student' && plan === 'guest') {
+      return { locked: true, reason: 'login', tier: model.tier };
+    }
+    return { locked: false, tier: model.tier };
+  }, [getPlan]);
+
+  const guestLimitReached = getPlan() === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+  const freeLimitReached = getPlan() === 'free' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+
+  const refreshUsage = useCallback(async () => {
     try {
-      const userId = getOrCreateUserId();
-      const usagePayload = await fetchUsage(userId);
+      const { userId, userRole } = getIdentity();
+      const usagePayload = await fetchUsage(userId, userRole);
       const payload = (usagePayload as any)?.usage ?? usagePayload;
       setUsage(payload);
       return payload;
@@ -50,7 +90,7 @@ const Index = () => {
       console.error('Failed to load usage', error);
       return null;
     }
-  };
+  }, [getIdentity]);
 
   const parseLambdaResponse = async (res: Response) => {
     let data: any = null;
@@ -74,11 +114,12 @@ const Index = () => {
 
   // Load chats from backend on mount
   useEffect(() => {
+    if (authLoading) return;
     const init = async () => {
       try {
         setIsFetchingChats(true);
-        const userId = getOrCreateUserId();
-        const sessions = await listChats(userId);
+        const { userId, userRole } = getIdentity();
+        const sessions = await listChats(userId, userRole);
 
         const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
         const formattedSessions: ChatSession[] = rawSessions.map(s => ({
@@ -94,7 +135,7 @@ const Index = () => {
         const savedSessionId = localStorage.getItem('cgpt_session_id');
         if (savedSessionId) {
           setActiveChatId(savedSessionId);
-          const chatData = await loadChat(savedSessionId, userId);
+          const chatData = await loadChat(savedSessionId, userId, userRole);
           setChatSessions(prev => prev.map(c =>
             c.id === savedSessionId
               ? { ...c, messages: chatData.messages || [] }
@@ -113,8 +154,7 @@ const Index = () => {
     };
 
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading, getIdentity, refreshUsage]);
 
   // Force KaTeX to re-render after new messages
   useEffect(() => {
@@ -150,18 +190,43 @@ const Index = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isLoading, toast]);
 
+  useEffect(() => {
+    const access = getModelAccess(selectedModel);
+    if (access.locked) {
+      const fallback = MODEL_OPTIONS.find(m => !getModelAccess(m.id).locked);
+      if (fallback) {
+        setSelectedModel(fallback.id);
+      }
+    }
+  }, [getModelAccess, selectedModel]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshUsage();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshUsage]);
+
+  useEffect(() => {
+    if (!isPricingOpen) {
+      refreshUsage();
+    }
+  }, [isPricingOpen, refreshUsage]);
+
   const createNewChat = async () => {
     try {
-      const userId = getOrCreateUserId();
+      const { userId, userRole } = getIdentity();
       const sessionId = crypto.randomUUID();
 
-      await createChat(sessionId, userId, 'New Chat');
+      await createChat(sessionId, userId, 'New Chat', userRole);
 
       localStorage.setItem('cgpt_session_id', sessionId);
       setActiveChatId(sessionId);
 
       // Reload sidebar from backend
-      const sessions = await listChats(userId);
+      const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
@@ -172,7 +237,7 @@ const Index = () => {
       setChatSessions(formattedSessions);
 
       // Load messages for the new chat from backend (source of truth)
-      const chatData = await loadChat(sessionId, userId);
+      const chatData = await loadChat(sessionId, userId, userRole);
       setChatSessions(prev => prev.map(c =>
         c.id === sessionId
           ? { ...c, messages: chatData.messages || [] }
@@ -190,11 +255,11 @@ const Index = () => {
 
   const deleteChatSession = async (chatId: string) => {
     try {
-      const userId = getOrCreateUserId();
-      await deleteSessionChat(chatId, userId);
-      
+      const { userId, userRole } = getIdentity();
+      await deleteSessionChat(chatId, userId, userRole);
+
       // Reload chat history from backend
-      const sessions = await listChats(userId);
+      const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
@@ -226,19 +291,19 @@ const Index = () => {
 
   const selectChat = async (chatId: string) => {
     try {
-      const userId = getOrCreateUserId();
-      
+      const { userId, userRole } = getIdentity();
+
       // Clear any active request tracking when switching chats
       activeRequestRef.current = null;
       setIsLoading(false);
       
       setActiveChatId(chatId);
       localStorage.setItem('cgpt_session_id', chatId);
-      
+
       // Always load from backend
-      const chatData = await loadChat(chatId, userId);
-      setChatSessions(prev => prev.map(c => 
-        c.id === chatId 
+      const chatData = await loadChat(chatId, userId, userRole);
+      setChatSessions(prev => prev.map(c =>
+        c.id === chatId
           ? { ...c, messages: chatData.messages || c.messages }
           : c
       ));
@@ -285,11 +350,44 @@ const Index = () => {
     setInputValue(text);
   };
 
-  const handlePlanSelect = async (_planId: string, priceId?: string) => {
+  const handleLockedModelSelect = useCallback((modelId: string, access: ModelAccessState) => {
+    const model = MODEL_OPTIONS.find(m => m.id === modelId);
+    if (access.reason === 'login') {
+      toast({
+        title: 'Sign in required',
+        description: 'Create a free account to use this model.',
+        variant: 'destructive'
+      });
+      setIsLoginOpen(true);
+      return;
+    }
+    toast({
+      title: 'Upgrade required',
+      description: model?.tier === 'pro'
+        ? 'Upgrade to Pro to access GPT-5 models.'
+        : 'Upgrade your plan to unlock this model.',
+      variant: 'destructive'
+    });
+    setIsPricingOpen(true);
+  }, [toast]);
+
+  const handlePlanSelect = async (planId: string, priceId?: string) => {
     try {
+      if (planId === 'free') {
+        setIsPricingOpen(false);
+        return;
+      }
+
+      if (!user) {
+        setIsLoginOpen(true);
+        setIsPricingOpen(false);
+        return;
+      }
+
       setIsCheckoutLoading(true);
-      const userId = getOrCreateUserId();
-      const result = await createCheckoutSession(userId, priceId);
+      const { userId, userRole } = getIdentity();
+      const selectedPlan = planId === 'pro' ? 'pro' : 'student';
+      const result = await createCheckoutSession(userId, userRole, selectedPlan, priceId);
       const parsed = (result as any)?.body ? JSON.parse((result as any).body) : result;
       const checkoutUrl = (parsed as any)?.checkout_url;
       if (checkoutUrl) {
@@ -297,22 +395,48 @@ const Index = () => {
       } else {
         toast({ title: 'Checkout unavailable', description: 'Could not start checkout session.' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start checkout', error);
-      toast({ title: 'Stripe error', description: error instanceof Error ? error.message : 'Unable to start checkout', variant: 'destructive' });
+      toast({ title: 'Stripe error', description: error?.message || 'Unable to start checkout', variant: 'destructive' });
     } finally {
       setIsCheckoutLoading(false);
     }
   };
 
+  const handleModelChange = (modelId: string) => {
+    const access = getModelAccess(modelId);
+    if (access.locked) {
+      handleLockedModelSelect(modelId, access);
+      return;
+    }
+    setSelectedModel(modelId);
+  };
+
   const handleSend = async (text: string, images?: File[]) => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
-    const userId = getOrCreateUserId();
+    const { userId, userRole } = getIdentity();
     const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId || !sessionId) return;
 
+    const modelAccess = getModelAccess(selectedModel);
+    if (modelAccess.locked) {
+      handleLockedModelSelect(selectedModel, modelAccess);
+      return;
+    }
+
     const usageInfo = await refreshUsage();
+
+    if (usageInfo?.plan === 'guest' && usageInfo?.limit !== null && (usageInfo?.problems_left ?? 0) <= 0) {
+      toast({
+        title: 'Sign in to keep going',
+        description: 'Guests get 4 problems per day. Sign in for a bigger daily limit.',
+        variant: 'destructive'
+      });
+      setIsLoginOpen(true);
+      return;
+    }
+
     if (usageInfo?.upgrade_required) {
       toast({
         title: 'Daily limit reached',
@@ -363,6 +487,7 @@ const Index = () => {
             model: selectedModel,
             user_id: userId,
             session_id: sessionId,
+            user_role: userRole,
             text: text,
             images: currentChat.clarificationImages,
           }),
@@ -404,6 +529,7 @@ const Index = () => {
               model: selectedModel,
               user_id: userId,
               session_id: sessionId,
+              user_role: userRole,
               text: text || 'Solve this problem',
               images: imagesBase64,
             }),
@@ -419,6 +545,7 @@ const Index = () => {
               model: selectedModel,
               user_id: userId,
               session_id: sessionId,
+              user_role: userRole,
               images: [imagesBase64[0]],
             }),
           }));
@@ -433,6 +560,7 @@ const Index = () => {
               model: selectedModel,
               user_id: userId,
               session_id: sessionId,
+              user_role: userRole,
               images: [imagesBase64[0]],
             };
             
@@ -494,13 +622,14 @@ const Index = () => {
               body: JSON.stringify({
                 action: 'solve',
                 mode: mode,
-                model: selectedModel,
-                user_id: userId,
-                session_id: sessionId,
-                text: text || 'Solve this problem',
-                images: imagesBase64,
-              }),
-            }));
+              model: selectedModel,
+              user_id: userId,
+              session_id: sessionId,
+              user_role: userRole,
+              text: text || 'Solve this problem',
+              images: imagesBase64,
+            }),
+          }));
           }
         }
       } else {
@@ -514,6 +643,7 @@ const Index = () => {
             model: selectedModel,
             user_id: userId,
             session_id: sessionId,
+            user_role: userRole,
             text: text,
           }),
         }));
@@ -527,7 +657,7 @@ const Index = () => {
       }
 
       // Reload messages from DynamoDB after backend updates
-      const chatData = await loadChat(sessionId, userId);
+      const chatData = await loadChat(sessionId, userId, userRole);
       
       // CRITICAL: Check again after loadChat
       if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -637,12 +767,12 @@ const Index = () => {
 
       // Persist auto-generated title to backend when needed
       if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        await updateChatTitle(sessionId, userId, autoTitle);
+        await updateChatTitle(sessionId, userId, autoTitle, userRole);
       }
 
       // Refresh sidebar to show updated title and all sessions
       console.log('[AUTO-TITLE] Fetching fresh chat list...');
-      const sessions = await listChats(userId);
+      const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       let formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id,
@@ -677,10 +807,14 @@ const Index = () => {
       ));
       
       console.log('[AUTO-TITLE] State updated with new title');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing request:', error);
 
-      if (error instanceof Error && error.message.toLowerCase().includes('limit')) {
+      const payload = error?.payload;
+      if (payload?.login_required) {
+        setIsLoginOpen(true);
+      }
+      if (payload?.upgrade_required) {
         setIsPricingOpen(true);
       }
 
@@ -689,7 +823,7 @@ const Index = () => {
           activeRequestRef.current?.requestId === requestId) {
         toast({
           title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to process your request. Please try again.',
+          description: payload?.message || payload?.error || (error instanceof Error ? error.message : 'Failed to process your request. Please try again.'),
           variant: 'destructive',
         });
       }
@@ -704,7 +838,7 @@ const Index = () => {
 
   // Check if this is the landing screen
   const isLandingScreen = messages.length === 0;
-  const limitReached = usage?.limit !== null && usage?.upgrade_required;
+  const limitReached = usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
 
   // Convert chat sessions to sidebar format
   const chatsForSidebar: Chat[] = chatSessions.map(chat => ({
@@ -774,7 +908,9 @@ const Index = () => {
                 onSend={handleSend}
                 disabled={isLoading || limitReached}
                 selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
+                onModelChange={handleModelChange}
+                modelAccess={getModelAccess}
+                onModelLockedSelect={handleLockedModelSelect}
                 mode={mode}
                 onModeChange={setMode}
                 onToolSelect={handleToolSelect}
@@ -823,7 +959,9 @@ const Index = () => {
               onSend={handleSend}
               disabled={isLoading || limitReached}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={handleModelChange}
+              modelAccess={getModelAccess}
+              onModelLockedSelect={handleLockedModelSelect}
               mode={mode}
               onModeChange={setMode}
               onToolSelect={handleToolSelect}
@@ -839,7 +977,9 @@ const Index = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
+        onModelChange={handleModelChange}
+        modelAccess={getModelAccess}
+        onModelLockedSelect={handleLockedModelSelect}
         showMoreSteps={showMoreSteps}
         onShowMoreStepsChange={setShowMoreSteps}
         conciseAnswers={conciseAnswers}
@@ -847,6 +987,8 @@ const Index = () => {
         sympyVerification={sympyVerification}
         onSympyVerificationChange={setSympyVerification}
       />
+
+      <LoginModal open={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
 
       {/* Pricing Modal */}
       <PricingModal
