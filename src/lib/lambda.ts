@@ -14,11 +14,25 @@ export function getOrCreateUserId(): string {
 
 async function callLambda(body: any, userRole: "guest" | "user" = "guest") {
   const payload = { ...body, user_role: userRole };
-  const res = await fetch(LAMBDA_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  let res: Response;
+  try {
+    res = await fetch(LAMBDA_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   // Always try to read and return the JSON body, even on non-2xx
   let json: any = null;

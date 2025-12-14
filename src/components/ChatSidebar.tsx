@@ -57,27 +57,6 @@ export const ChatSidebar = ({
   const isProPlan = normalizedPlan === 'pro' || (usage?.subscription_status || '').toLowerCase() === 'pro';
   const planDisplay = planLabel || usage?.plan || 'guest';
 
-  const workspaceEntries = [
-    {
-      id: 'workspace',
-      label: 'Workspace',
-      description: 'Keep all of your problem sessions together.',
-      icon: FolderKanban,
-    },
-    {
-      id: 'uploads',
-      label: 'Uploads',
-      description: 'Find diagrams and files you recently added.',
-      icon: Upload,
-    },
-    {
-      id: 'saved',
-      label: 'Saved items',
-      description: 'Quick access to pinned problems and notes.',
-      icon: Star,
-    },
-  ];
-
   const handleDeleteClick = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
     onDeleteChat(chatId);
