@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ModelAccessState, ModelSelector } from './ModelSelector';
-import { ModeSelector, AnalysisModeId } from './ModeSelector';
+import { ModeSelector } from './ModeSelector';
 import { ToolsMenu } from './ToolsMenu';
 
 interface ChatInputProps {
@@ -12,8 +12,8 @@ interface ChatInputProps {
   onModelChange: (model: string) => void;
   modelAccess?: (modelId: string) => ModelAccessState;
   onModelLockedSelect?: (modelId: string, access: ModelAccessState) => void;
-  mode: AnalysisModeId;
-  onModeChange: (mode: AnalysisModeId) => void;
+  mode: 'auto' | 'hybrid';
+  onModeChange: (mode: 'auto' | 'hybrid') => void;
   onToolSelect: (text: string) => void;
   inputValue?: string;
   onInputChange?: (value: string) => void;

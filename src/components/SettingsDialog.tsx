@@ -4,8 +4,6 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ModelAccessState, ModelSelector } from './ModelSelector';
-import { ProfileSettings } from './ProfileSettings';
-import { AvatarOption, PersonaOption } from './personas';
 import { useTheme } from 'next-themes';
 
 interface SettingsDialogProps {

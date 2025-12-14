@@ -7,12 +7,11 @@ import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
 import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
-import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/components/personas';
-import { ModeStatus } from '@/components/ModeStatus';
-import { AnalysisModeId } from '@/components/ModeSelector';
 import { Calculator, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { WorkspaceItem, loadWorkspaces, saveWorkspaces } from '@/lib/workspaces';
 
 interface ChatSession {
   id: string;
@@ -26,6 +25,7 @@ interface ChatSession {
 
 
 const Index = () => {
+  const navigate = useNavigate();
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,8 +42,7 @@ const Index = () => {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<{ persona: string; avatarUrl?: string }>({ persona: DEFAULT_PERSONA_ID });
-  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -80,21 +79,6 @@ const Index = () => {
       return { locked: true, reason: 'login', tier: model.tier };
     }
     return { locked: false, tier: model.tier };
-  }, [getPlan]);
-
-  const getPersonaAccess = useCallback((personaId: string) => {
-    const plan = getPlan();
-    const persona = PERSONA_OPTIONS.find(p => p.id === personaId) || PERSONA_OPTIONS[0];
-    if (persona.tier === 'pro') {
-      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: persona.tier };
-    }
-    if (persona.tier === 'student' && plan === 'guest') {
-      return { locked: true, reason: 'login', tier: persona.tier };
-    }
-    if (persona.tier === 'student' && plan === 'free') {
-      return { locked: true, reason: 'upgrade', tier: persona.tier };
-    }
-    return { locked: false, tier: persona.tier };
   }, [getPlan]);
 
   const guestLimitReached = getPlan() === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
@@ -139,34 +123,38 @@ const Index = () => {
     setIsLoading(false);
   }, []);
 
-  const normalizeProfile = useCallback((data: any) => {
-    const personaId = data?.persona;
-    const personaValid = PERSONA_OPTIONS.some(p => p.id === personaId);
-    return {
-      persona: personaValid ? personaId : DEFAULT_PERSONA_ID,
-      avatarUrl: data?.avatar_url || data?.avatarUrl,
+  const handleCreateWorkspace = useCallback(() => {
+    const name = prompt('Name your workspace');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const workspace: WorkspaceItem = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      createdAt: Date.now()
     };
-  }, []);
+    setWorkspaces((prev) => [...prev, workspace]);
+    navigate(`/workspaces/${workspace.id}`, { state: { workspace } });
+  }, [navigate]);
 
-  const refreshProfile = useCallback(async () => {
-    try {
-      const { userId, userRole } = getIdentity();
-      const profilePayload = await getProfile(userId, userRole);
-      const payload = (profilePayload as any)?.profile ?? profilePayload;
-      const normalized = normalizeProfile(payload || {});
-      setProfile(normalized);
-      return normalized;
-    } catch (error) {
-      console.error('Failed to load profile', error);
-      return null;
-    }
-  }, [getIdentity, normalizeProfile]);
+  const handleSelectWorkspace = useCallback((workspaceId: string) => {
+    const workspace = workspaces.find((w) => w.id === workspaceId);
+    navigate(`/workspaces/${workspaceId}`, { state: { workspace } });
+  }, [navigate, workspaces]);
 
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
   const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
   const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
   const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   // Load chats from backend on mount
   useEffect(() => {
@@ -226,11 +214,6 @@ const Index = () => {
     init();
   }, [authLoading, getIdentity, refreshUsage, startNewChatDraft]);
 
-  useEffect(() => {
-    if (authLoading) return;
-    refreshProfile();
-  }, [authLoading, refreshProfile]);
-
   // Force KaTeX to re-render after new messages
   useEffect(() => {
     if (messagesContainerRef.current && typeof window !== 'undefined') {
@@ -274,16 +257,6 @@ const Index = () => {
       }
     }
   }, [getModelAccess, selectedModel]);
-
-  useEffect(() => {
-    const access = getPersonaAccess(profile.persona);
-    if (access.locked) {
-      const fallback = PERSONA_OPTIONS.find(p => !getPersonaAccess(p.id).locked);
-      if (fallback) {
-        setProfile(prev => ({ ...prev, persona: fallback.id }));
-      }
-    }
-  }, [getPersonaAccess, profile.persona]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -460,75 +433,12 @@ const Index = () => {
     setSelectedModel(modelId);
   };
 
-  const applyProfileUpdate = (payload: any) => {
-    const normalized = normalizeProfile(payload || {});
-    setProfile(normalized);
-    return normalized;
-  };
-
-  const handlePersonaLockedSelect = (personaId: string, access?: { reason?: 'login' | 'upgrade' }) => {
-    if (access?.reason === 'login') {
-      setIsLoginOpen(true);
-      return;
-    }
-    setIsPricingOpen(true);
-  };
-
-  const handlePersonaChange = async (personaId: string) => {
-    const access = getPersonaAccess(personaId);
-    if (access.locked) {
-      handlePersonaLockedSelect(personaId, access);
-      return;
-    }
-
-    applyProfileUpdate({ ...profile, persona: personaId });
-
-    try {
-      const { userId, userRole } = getIdentity();
-      const result = await updateProfile(userId, userRole, { persona: personaId });
-      const payload = (result as any)?.profile ?? result;
-      applyProfileUpdate(payload);
-    } catch (error: any) {
-      console.error('Failed to update persona', error);
-      toast({ title: 'Unable to save persona', description: error?.message || 'Please try again.', variant: 'destructive' });
-    }
-  };
-
-  const handleAvatarSelect = async (avatarUrl: string) => {
-    applyProfileUpdate({ ...profile, avatar_url: avatarUrl });
-    try {
-      const { userId, userRole } = getIdentity();
-      const result = await updateProfile(userId, userRole, { avatar_url: avatarUrl });
-      applyProfileUpdate((result as any)?.profile ?? result);
-    } catch (error: any) {
-      console.error('Failed to update avatar', error);
-      toast({ title: 'Unable to save avatar', description: error?.message || 'Please try again.', variant: 'destructive' });
-    }
-  };
-
-  const handleAvatarUpload = async (file: File) => {
-    setIsAvatarUploading(true);
-    try {
-      const base64 = await fileToBase64(file);
-      const { userId, userRole } = getIdentity();
-      const result = await updateProfile(userId, userRole, { avatar_data: base64 });
-      applyProfileUpdate((result as any)?.profile ?? result);
-    } catch (error: any) {
-      console.error('Failed to upload avatar', error);
-      toast({ title: 'Upload failed', description: error?.message || 'Please try another image.', variant: 'destructive' });
-    } finally {
-      setIsAvatarUploading(false);
-    }
-  };
-
   const handleSend = async (text: string, images?: File[]) => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const { userId, userRole } = getIdentity();
     let sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId) return;
-
-    const personaId = profile.persona || DEFAULT_PERSONA_ID;
 
     if (!sessionId) {
       const generatedId = crypto.randomUUID();
@@ -622,7 +532,6 @@ const Index = () => {
             user_id: userId,
             session_id: sessionId,
             user_role: userRole,
-            persona: personaId,
             text: text,
             images: currentChat.clarificationImages,
           }),
@@ -665,7 +574,6 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
-              persona: personaId,
               text: text || 'Solve this problem',
               images: imagesBase64,
             }),
@@ -682,7 +590,6 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
-              persona: personaId,
               images: [imagesBase64[0]],
             }),
           }));
@@ -698,7 +605,6 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
-              persona: personaId,
               images: [imagesBase64[0]],
             };
             
@@ -760,15 +666,14 @@ const Index = () => {
               body: JSON.stringify({
                 action: 'solve',
                 mode: mode,
-                model: selectedModel,
-                user_id: userId,
-                session_id: sessionId,
-                user_role: userRole,
-                persona: personaId,
-                text: text || 'Solve this problem',
-                images: imagesBase64,
-              }),
-            }));
+              model: selectedModel,
+              user_id: userId,
+              session_id: sessionId,
+              user_role: userRole,
+              text: text || 'Solve this problem',
+              images: imagesBase64,
+            }),
+          }));
           }
         }
       } else {
@@ -783,7 +688,6 @@ const Index = () => {
             user_id: userId,
             session_id: sessionId,
             user_role: userRole,
-            persona: personaId,
             text: text,
           }),
         }));
@@ -1009,32 +913,19 @@ const Index = () => {
         onDeleteChat={deleteChatSession}
         onOpenPricing={() => setIsPricingOpen(true)}
         usage={usage}
+        workspaces={workspaces}
+        onCreateWorkspace={handleCreateWorkspace}
+        onSelectWorkspace={handleSelectWorkspace}
+        planLabel={getPlan()}
       />
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header - Transparent */}
-        <div className="bg-transparent px-4 py-4 space-y-3">
-          <div className="flex items-center justify-between text-foreground">
-            <div className="flex items-center gap-2">
-              <Calculator className="h-6 w-6" />
-              <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
-            </div>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
-              aria-label="Settings"
-            >
-              <Settings className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="max-w-4xl w-full mx-auto">
-            <ModeStatus
-              value={mode}
-              onValueChange={setMode}
-              awaitingClarification={activeChat?.awaitingClarification}
-            />
+        <div className="bg-transparent px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-foreground">
+            <Calculator className="h-6 w-6" />
+            <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
           </div>
         </div>
 
