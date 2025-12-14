@@ -7,18 +7,30 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface ModeSelectorProps {
-  value: 'auto' | 'hybrid';
-  onValueChange: (value: 'auto' | 'hybrid') => void;
-}
+export type AnalysisModeId = 'auto' | 'hybrid';
 
-const MODES = [
-  { id: 'auto', name: 'Auto', description: 'Automatic analysis' },
-  { id: 'hybrid', name: 'Hybrid', description: 'Interactive clarifications' },
+export const ANALYSIS_MODES: { id: AnalysisModeId; name: string; description: string; cue: string }[] = [
+  {
+    id: 'auto',
+    name: 'Auto',
+    description: 'Automatic analysis',
+    cue: 'Share the full problem and the solver will respond with a complete walkthrough.',
+  },
+  {
+    id: 'hybrid',
+    name: 'Hybrid',
+    description: 'Interactive clarifications',
+    cue: 'The assistant may pause to ask focused questions before finishing the solution.',
+  },
 ];
 
+interface ModeSelectorProps {
+  value: AnalysisModeId;
+  onValueChange: (value: AnalysisModeId) => void;
+}
+
 export const ModeSelector = ({ value, onValueChange }: ModeSelectorProps) => {
-  const selectedMode = MODES.find(m => m.id === value) || MODES[0];
+  const selectedMode = ANALYSIS_MODES.find(m => m.id === value) || ANALYSIS_MODES[0];
 
   return (
     <DropdownMenu>
@@ -32,10 +44,10 @@ export const ModeSelector = ({ value, onValueChange }: ModeSelectorProps) => {
         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
           Analysis Mode
         </div>
-        {MODES.map((mode) => (
+        {ANALYSIS_MODES.map((mode) => (
           <DropdownMenuItem
             key={mode.id}
-            onClick={() => onValueChange(mode.id as 'auto' | 'hybrid')}
+            onClick={() => onValueChange(mode.id)}
             className="flex items-start gap-2 py-2.5 cursor-pointer"
           >
             <div className="flex h-5 items-center">
