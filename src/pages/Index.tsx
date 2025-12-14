@@ -38,6 +38,7 @@ const Index = () => {
   const [usage, setUsage] = useState<any>(null);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -109,6 +110,15 @@ const Index = () => {
     return parsed;
   };
 
+  const startNewChatDraft = useCallback(() => {
+    const draftId = crypto.randomUUID();
+    setPendingSessionId(draftId);
+    setActiveChatId(draftId);
+    setInputValue('');
+    activeRequestRef.current = null;
+    setIsLoading(false);
+  }, []);
+
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
 
@@ -133,7 +143,10 @@ const Index = () => {
         await refreshUsage();
 
         const savedSessionId = localStorage.getItem('cgpt_session_id');
-        if (savedSessionId) {
+        const savedSessionExists = formattedSessions.some(s => s.id === savedSessionId);
+
+        if (savedSessionId && savedSessionExists) {
+          setPendingSessionId(null);
           setActiveChatId(savedSessionId);
           const chatData = await loadChat(savedSessionId, userId, userRole);
           setChatSessions(prev => prev.map(c =>
@@ -141,20 +154,31 @@ const Index = () => {
               ? { ...c, messages: chatData.messages || [] }
               : c
           ));
+        } else if (formattedSessions.length > 0) {
+          const firstSession = formattedSessions[0];
+          setPendingSessionId(null);
+          setActiveChatId(firstSession.id);
+          localStorage.setItem('cgpt_session_id', firstSession.id);
+          const chatData = await loadChat(firstSession.id, userId, userRole);
+          setChatSessions(prev => prev.map(c =>
+            c.id === firstSession.id
+              ? { ...c, messages: chatData.messages || [] }
+              : c
+          ));
         } else {
-          await createNewChat();
+          startNewChatDraft();
         }
       } catch (error) {
         console.error('Error loading chats:', error);
-        // Don't show error toast on initial load - just create a new chat
-        await createNewChat();
+        // Don't show error toast on initial load - just start a draft chat
+        startNewChatDraft();
       } finally {
         setIsFetchingChats(false);
       }
     };
 
     init();
-  }, [authLoading, getIdentity, refreshUsage]);
+  }, [authLoading, getIdentity, refreshUsage, startNewChatDraft]);
 
   // Force KaTeX to re-render after new messages
   useEffect(() => {
@@ -215,44 +239,6 @@ const Index = () => {
     }
   }, [isPricingOpen, refreshUsage]);
 
-  const createNewChat = async () => {
-    try {
-      const { userId, userRole } = getIdentity();
-      const sessionId = crypto.randomUUID();
-
-      await createChat(sessionId, userId, 'New Chat', userRole);
-
-      localStorage.setItem('cgpt_session_id', sessionId);
-      setActiveChatId(sessionId);
-
-      // Reload sidebar from backend
-      const sessions = await listChats(userId, userRole);
-      const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
-        id: s.session_id,
-        title: s.title,
-        messages: s.messages || [],
-        createdAt: s.created_at
-      }));
-      setChatSessions(formattedSessions);
-
-      // Load messages for the new chat from backend (source of truth)
-      const chatData = await loadChat(sessionId, userId, userRole);
-      setChatSessions(prev => prev.map(c =>
-        c.id === sessionId
-          ? { ...c, messages: chatData.messages || [] }
-          : c
-      ));
-
-      toast({
-        title: 'Chat created',
-      });
-    } catch (error) {
-      console.error('Error creating chat:', error);
-      // Don't show error toast - just proceed with local session
-    }
-  };
-
   const deleteChatSession = async (chatId: string) => {
     try {
       const { userId, userRole } = getIdentity();
@@ -269,14 +255,14 @@ const Index = () => {
       }));
       
       setChatSessions(formattedSessions);
-      
+
       if (chatId === activeChatId) {
         if (formattedSessions.length > 0) {
           const newActiveId = formattedSessions[0].id;
           setActiveChatId(newActiveId);
           localStorage.setItem('cgpt_session_id', newActiveId);
         } else {
-          await createNewChat();
+          startNewChatDraft();
         }
       }
       
@@ -296,7 +282,8 @@ const Index = () => {
       // Clear any active request tracking when switching chats
       activeRequestRef.current = null;
       setIsLoading(false);
-      
+      setPendingSessionId(null);
+
       setActiveChatId(chatId);
       localStorage.setItem('cgpt_session_id', chatId);
 
@@ -416,8 +403,37 @@ const Index = () => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const { userId, userRole } = getIdentity();
-    const sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
-    if (!userId || !sessionId) return;
+    let sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
+    if (!userId) return;
+
+    if (!sessionId) {
+      const generatedId = crypto.randomUUID();
+      sessionId = generatedId;
+      setActiveChatId(generatedId);
+      setPendingSessionId(generatedId);
+    }
+
+    if (pendingSessionId && sessionId === pendingSessionId) {
+      try {
+        await createChat(sessionId, userId, 'New Chat', userRole);
+        setPendingSessionId(null);
+        localStorage.setItem('cgpt_session_id', sessionId);
+        setChatSessions(prev => [
+          { id: sessionId, title: 'New Chat', messages: [], createdAt: Date.now() },
+          ...prev,
+        ]);
+      } catch (error) {
+        console.error('Error creating chat:', error);
+        toast({ title: 'Unable to start chat', description: 'Please try again.', variant: 'destructive' });
+        return;
+      }
+    }
+
+    const modelAccess = getModelAccess(selectedModel);
+    if (modelAccess.locked) {
+      handleLockedModelSelect(selectedModel, modelAccess);
+      return;
+    }
 
     const modelAccess = getModelAccess(selectedModel);
     if (modelAccess.locked) {
@@ -864,7 +880,7 @@ const Index = () => {
       <ChatSidebar
         chats={chatsForSidebar}
         activeChat={activeChatId}
-        onNewChat={createNewChat}
+        onNewChat={startNewChatDraft}
         onSelectChat={selectChat}
         onDeleteChat={deleteChatSession}
         onOpenPricing={() => setIsPricingOpen(true)}
