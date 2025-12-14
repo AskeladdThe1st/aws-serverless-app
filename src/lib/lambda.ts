@@ -112,6 +112,33 @@ export async function deleteChat(
   );
 }
 
+export async function getProfile(userId: string, userRole: "guest" | "user" = "guest") {
+  return callLambda(
+    {
+      action: "profile",
+      operation: "get",
+      user_id: userId,
+    },
+    userRole,
+  );
+}
+
+export async function updateProfile(
+  userId: string,
+  userRole: "guest" | "user" = "guest",
+  profile: { persona?: string; avatar_url?: string; avatar_data?: string },
+) {
+  return callLambda(
+    {
+      action: "profile",
+      operation: "update",
+      user_id: userId,
+      ...profile,
+    },
+    userRole,
+  );
+}
+
 // Persist updated chat titles to DynamoDB using the existing "update" action
 export async function updateChatTitle(
   sessionId: string,

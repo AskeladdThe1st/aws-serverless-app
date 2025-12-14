@@ -4,6 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ModelAccessState, ModelSelector } from './ModelSelector';
+import { ProfileSettings } from './ProfileSettings';
+import { AvatarOption, PersonaOption } from './personas';
 import { useTheme } from 'next-themes';
 
 interface SettingsDialogProps {
@@ -19,6 +21,16 @@ interface SettingsDialogProps {
   onConciseAnswersChange: (enabled: boolean) => void;
   sympyVerification: boolean;
   onSympyVerificationChange: (enabled: boolean) => void;
+  personaOptions: PersonaOption[];
+  selectedPersona: string;
+  onPersonaChange: (personaId: string) => void;
+  personaAccess?: (personaId: string) => { locked: boolean; reason?: 'login' | 'upgrade'; tier?: string };
+  onPersonaLockedSelect?: (personaId: string, access?: { locked: boolean; reason?: 'login' | 'upgrade'; tier?: string }) => void;
+  avatarOptions: AvatarOption[];
+  selectedAvatar?: string;
+  onAvatarSelect: (avatarUrl: string) => void;
+  onAvatarUpload: (file: File) => void;
+  isUploadingAvatar?: boolean;
 }
 
 export const SettingsDialog = ({
@@ -34,6 +46,16 @@ export const SettingsDialog = ({
   onConciseAnswersChange,
   sympyVerification,
   onSympyVerificationChange,
+  personaOptions,
+  selectedPersona,
+  onPersonaChange,
+  personaAccess,
+  onPersonaLockedSelect,
+  avatarOptions,
+  selectedAvatar,
+  onAvatarSelect,
+  onAvatarUpload,
+  isUploadingAvatar,
 }: SettingsDialogProps) => {
   const { theme, setTheme } = useTheme();
 
@@ -121,6 +143,20 @@ export const SettingsDialog = ({
               />
             </div>
           </div>
+
+          {/* Profile Settings */}
+          <ProfileSettings
+            personaOptions={personaOptions}
+            selectedPersona={selectedPersona}
+            onPersonaChange={onPersonaChange}
+            personaAccess={personaAccess}
+            onPersonaLockedSelect={onPersonaLockedSelect}
+            avatarOptions={avatarOptions}
+            selectedAvatar={selectedAvatar}
+            onAvatarSelect={onAvatarSelect}
+            onAvatarUpload={onAvatarUpload}
+            isUploadingAvatar={isUploadingAvatar}
+          />
         </div>
       </DialogContent>
     </Dialog>
