@@ -3,7 +3,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ModelSelector } from './ModelSelector';
+import { ModelAccessState, ModelSelector } from './ModelSelector';
 import { useTheme } from 'next-themes';
 
 interface SettingsDialogProps {
@@ -11,6 +11,8 @@ interface SettingsDialogProps {
   onClose: () => void;
   selectedModel: string;
   onModelChange: (model: string) => void;
+  modelAccess?: (modelId: string) => ModelAccessState;
+  onModelLockedSelect?: (modelId: string, access: ModelAccessState) => void;
   showMoreSteps: boolean;
   onShowMoreStepsChange: (enabled: boolean) => void;
   conciseAnswers: boolean;
@@ -24,6 +26,8 @@ export const SettingsDialog = ({
   onClose,
   selectedModel,
   onModelChange,
+  modelAccess,
+  onModelLockedSelect,
   showMoreSteps,
   onShowMoreStepsChange,
   conciseAnswers,
@@ -111,6 +115,8 @@ export const SettingsDialog = ({
               <ModelSelector
                 value={selectedModel}
                 onValueChange={onModelChange}
+                accessForModel={modelAccess}
+                onLockedSelect={onModelLockedSelect}
                 variant="default"
               />
             </div>
