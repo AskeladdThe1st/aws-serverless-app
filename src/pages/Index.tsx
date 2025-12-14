@@ -435,12 +435,6 @@ const Index = () => {
       return;
     }
 
-    const modelAccess = getModelAccess(selectedModel);
-    if (modelAccess.locked) {
-      handleLockedModelSelect(selectedModel, modelAccess);
-      return;
-    }
-
     const usageInfo = await refreshUsage();
 
     if (usageInfo?.plan === 'guest' && usageInfo?.limit !== null && (usageInfo?.problems_left ?? 0) <= 0) {
