@@ -37,6 +37,7 @@ SYSTEM_PROMPT = (
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
+PROFILE_BUCKET = os.environ.get("PROFILE_BUCKET")
 OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
@@ -66,10 +67,31 @@ FREE_MODELS = {
 }
 ALLOWED_MODELS = {*FREE_MODELS, *STUDENT_MODELS, *PRO_MODELS}
 
+PERSONAS = {
+    "classic": {
+        "name": "Classic Tutor",
+        "tier": "guest",
+        "prompt": "Maintain the concise, verified calculus tutoring style.",
+    },
+    "visual": {
+        "name": "Visual Guide",
+        "tier": "student",
+        "prompt": "Lean on visual metaphors, graphs, and intuition before formal derivations.",
+    },
+    "exam": {
+        "name": "Exam Coach",
+        "tier": "pro",
+        "prompt": "Keep solutions terse, highlight common pitfalls, and add quick-check tips for exams.",
+    },
+}
+
+DEFAULT_PERSONA = "classic"
+
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
 sessions_table = dynamo.Table(SESSIONS_TABLE)
 usage_table = dynamo.Table(USAGE_TABLE)
+s3 = boto3.client("s3", region_name=REGION) if PROFILE_BUCKET else None
 CONFIG_CHECK = None
 CONFIG_CHECK_AT = 0
 CONFIG_TTL_SECONDS = 300
@@ -325,6 +347,77 @@ def calculate_usage_info(user_id: str, user_role: str = "guest") -> dict:
         "login_required": login_required,
         "is_paid": is_paid,
     }
+
+
+def _persona_allowed(plan: str, persona_id: str | None) -> bool:
+    if not persona_id or persona_id not in PERSONAS:
+        return False
+    tier = PERSONAS[persona_id].get("tier", "guest")
+    if tier == "pro":
+        return plan == "pro"
+    if tier == "student":
+        return plan in {"student", "pro"}
+    return True
+
+
+def _persona_prompt(persona_id: str | None = None, plan: str | None = None) -> str:
+    plan_normalized = (plan or "guest").lower()
+    persona_key = persona_id if _persona_allowed(plan_normalized, persona_id) else DEFAULT_PERSONA
+    persona = PERSONAS.get(persona_key) or PERSONAS[DEFAULT_PERSONA]
+    prompt = persona.get("prompt")
+    if prompt:
+        return f"{SYSTEM_PROMPT}\n\nPersona focus: {prompt}"
+    return SYSTEM_PROMPT
+
+
+def _profile_payload(record: dict) -> dict:
+    plan = _normalize_plan(record.copy(), "user")
+    persona = record.get("persona") or DEFAULT_PERSONA
+    if not _persona_allowed(plan, persona):
+        persona = DEFAULT_PERSONA
+    avatar_url = record.get("avatar_url") or record.get("avatarKey") or record.get("avatar")
+    return {
+        "persona": persona if persona in PERSONAS else DEFAULT_PERSONA,
+        "avatar_url": avatar_url,
+    }
+
+
+def save_avatar_to_s3(user_id: str, avatar_b64: str) -> tuple[str, str]:
+    if not s3 or not PROFILE_BUCKET:
+        raise RuntimeError("Avatar uploads are disabled because PROFILE_BUCKET is not configured.")
+    key = f"avatars/{user_id}.png"
+    body = base64.b64decode(avatar_b64.split(",")[-1])
+    s3.put_object(
+        Bucket=PROFILE_BUCKET,
+        Key=key,
+        Body=body,
+        ContentType="image/png",
+        ACL="public-read",
+    )
+    url = f"https://{PROFILE_BUCKET}.s3.amazonaws.com/{key}"
+    return url, key
+
+
+def update_profile_record(
+    user_id: str,
+    user_role: str,
+    persona: str | None = None,
+    avatar_url: str | None = None,
+    avatar_b64: str | None = None,
+) -> dict:
+    record = get_usage_record(user_id, user_role)
+    plan = _normalize_plan(record, user_role)
+    if persona and _persona_allowed(plan, persona):
+        record["persona"] = persona
+    if avatar_b64:
+        url, key = save_avatar_to_s3(user_id, avatar_b64)
+        record["avatar_url"] = url
+        record["avatar_key"] = key
+    elif avatar_url is not None:
+        record["avatar_url"] = avatar_url
+        record.pop("avatar_key", None)
+    usage_table.put_item(Item=record)
+    return _profile_payload(record)
 
 
 def increment_usage(user_id: str, user_role: str = "guest") -> dict:
@@ -735,6 +828,7 @@ def lambda_handler(event, context):
                             "list",
                             "delete",
                             "update",
+                            "profile",
                             "manual_graph",
                             "graph",
                             "clarify_graph",
@@ -823,6 +917,29 @@ def lambda_handler(event, context):
                 return respond(400, {"error": "Nothing to update"})
             update_session(user_id, session_id, update_fields)
             return respond(200, {"message": "Session updated", "updated": update_fields})
+        if action == "profile":
+            if not user_id:
+                return respond(400, {"error": "user_id_required"})
+            operation = (body.get("operation") or "get").lower()
+            persona_choice = body.get("persona")
+            avatar_b64 = body.get("avatar_data")
+            avatar_url = body.get("avatar_url")
+            if operation == "get":
+                record = get_usage_record(user_id, user_role)
+                return respond(200, {"profile": _profile_payload(record)})
+            if operation == "update":
+                try:
+                    profile = update_profile_record(
+                        user_id,
+                        user_role,
+                        persona=persona_choice,
+                        avatar_url=avatar_url,
+                        avatar_b64=avatar_b64,
+                    )
+                    return respond(200, {"profile": profile})
+                except Exception as exc:
+                    return respond(400, {"error": "profile_update_failed", "message": str(exc)})
+            return respond(400, {"error": "invalid_profile_operation"})
         if action == "manual_graph":
             features = body.get("graph_features") or {}
             result = analyze_graph_from_features(features)
@@ -906,7 +1023,8 @@ def lambda_handler(event, context):
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            profile_record = get_usage_record(user_id, user_role)
+            messages = [{"role": "system", "content": _persona_prompt(profile_record.get("persona"), profile_record.get("plan"))}]
             for msg in history:
                 if not isinstance(msg, dict):
                     continue
