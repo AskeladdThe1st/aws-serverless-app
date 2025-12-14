@@ -216,7 +216,7 @@ export const ChatInput = ({
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Ask anything about calculus..."
+            placeholder="Ask anything about math..."
             className="flex-1 bg-transparent border-0 outline-none text-foreground placeholder:text-muted-foreground disabled:opacity-50 text-base resize-none min-h-[24px] max-h-[200px]"
             disabled={disabled}
             rows={1}

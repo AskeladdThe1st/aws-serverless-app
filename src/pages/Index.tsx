@@ -435,12 +435,6 @@ const Index = () => {
       return;
     }
 
-    const modelAccess = getModelAccess(selectedModel);
-    if (modelAccess.locked) {
-      handleLockedModelSelect(selectedModel, modelAccess);
-      return;
-    }
-
     const usageInfo = await refreshUsage();
 
     if (usageInfo?.plan === 'guest' && usageInfo?.limit !== null && (usageInfo?.problems_left ?? 0) <= 0) {
@@ -893,7 +887,7 @@ const Index = () => {
         <div className="bg-transparent px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-foreground">
             <Calculator className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">Calculus Agent</h1>
+            <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -910,8 +904,11 @@ const Index = () => {
             <div className="w-full max-w-4xl space-y-12">
               <div className="text-center">
                 <h1 className="text-4xl md:text-5xl font-semibold text-foreground">
-                  What do you want to analyze today?
+                  How can Math Tutor Agent help with your math today?
                 </h1>
+                <p className="mt-4 text-lg text-muted-foreground">
+                  Your AI copilot for step-by-step insights, visual problem solving, and reliable math checks.
+                </p>
               </div>
 
               {limitReached && (
