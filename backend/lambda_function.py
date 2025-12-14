@@ -582,6 +582,22 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
+        global _REQUEST_ORIGIN
+        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
 
         config = _config_status()
 
@@ -809,6 +825,29 @@ def lambda_handler(event, context):
                 return respond(400, {"error": "Nothing to update"})
             update_session(user_id, session_id, update_fields)
             return respond(200, {"message": "Session updated", "updated": update_fields})
+        if action == "profile":
+            if not user_id:
+                return respond(400, {"error": "user_id_required"})
+            operation = (body.get("operation") or "get").lower()
+            persona_choice = body.get("persona")
+            avatar_b64 = body.get("avatar_data")
+            avatar_url = body.get("avatar_url")
+            if operation == "get":
+                record = get_usage_record(user_id, user_role)
+                return respond(200, {"profile": _profile_payload(record)})
+            if operation == "update":
+                try:
+                    profile = update_profile_record(
+                        user_id,
+                        user_role,
+                        persona=persona_choice,
+                        avatar_url=avatar_url,
+                        avatar_b64=avatar_b64,
+                    )
+                    return respond(200, {"profile": profile})
+                except Exception as exc:
+                    return respond(400, {"error": "profile_update_failed", "message": str(exc)})
+            return respond(400, {"error": "invalid_profile_operation"})
         if action == "manual_graph":
             features = body.get("graph_features") or {}
             result = analyze_graph_from_features(features)
@@ -892,7 +931,8 @@ def lambda_handler(event, context):
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            profile_record = get_usage_record(user_id, user_role)
+            messages = [{"role": "system", "content": _persona_prompt(profile_record.get("persona"), profile_record.get("plan"))}]
             for msg in history:
                 if not isinstance(msg, dict):
                     continue
