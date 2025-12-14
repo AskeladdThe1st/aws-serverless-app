@@ -10,6 +10,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
 import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/components/personas';
+import { ModeStatus } from '@/components/ModeStatus';
+import { AnalysisModeId } from '@/components/ModeSelector';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -28,7 +30,7 @@ const Index = () => {
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
-  const [mode, setMode] = useState<'auto' | 'hybrid'>('auto');
+  const [mode, setMode] = useState<AnalysisModeId>('auto');
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
@@ -1012,18 +1014,28 @@ const Index = () => {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header - Transparent */}
-        <div className="bg-transparent px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-foreground">
-            <Calculator className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
+        <div className="bg-transparent px-4 py-4 space-y-3">
+          <div className="flex items-center justify-between text-foreground">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-6 w-6" />
+              <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
+            </div>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
+              aria-label="Settings"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
-            aria-label="Settings"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
+
+          <div className="max-w-4xl w-full mx-auto">
+            <ModeStatus
+              value={mode}
+              onValueChange={setMode}
+              awaitingClarification={activeChat?.awaitingClarification}
+            />
+          </div>
         </div>
 
         {isLandingScreen ? (
