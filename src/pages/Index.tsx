@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
@@ -147,6 +148,14 @@ const Index = () => {
   const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
   const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
   const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   useEffect(() => {
     setWorkspaces(loadWorkspaces());
