@@ -237,6 +237,14 @@ const Index = () => {
     saveWorkspaces(workspaces);
   }, [workspaces]);
 
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
   // Load chats from backend on mount
   useEffect(() => {
     if (authLoading) return;
