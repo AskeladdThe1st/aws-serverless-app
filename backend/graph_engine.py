@@ -552,7 +552,7 @@ def generate_clarifying_question(feature: str) -> str:
     return mapping.get(feature, "Could you clarify an uncertain feature of the graph?")
 
 
-def merge_user_correction(auto_features: Dict[str, Any], user_text: str) -> Dict[str, Any]]:
+def merge_user_correction(auto_features: Dict[str, Any], user_text: str) -> Dict[str, Any]:
     # Simple heuristic: append user text to notes
     updated = _deepcopy_json(auto_features)
     notes = updated.get("notes") or []
