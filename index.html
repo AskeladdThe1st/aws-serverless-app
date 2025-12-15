@@ -31,6 +31,8 @@
       // Define legacy globals early to prevent ReferenceErrors before the bundle loads
       window.PERSONA_OPTIONS = window.PERSONA_OPTIONS || [];
       window.profile = window.profile || {};
+      window.getPersonaAccess =
+        window.getPersonaAccess || (() => ({ tier: "guest" }));
       window.handlePersonaChange =
         window.handlePersonaChange || (() => {});
     </script>
