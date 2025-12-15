@@ -30,6 +30,11 @@
     <script>
       // Define legacy globals early to prevent ReferenceErrors before the bundle loads
       window.PERSONA_OPTIONS = window.PERSONA_OPTIONS || [];
+      window.PRESET_AVATARS = window.PRESET_AVATARS || [];
+      window.AVAILABLE_AVATARS = window.AVAILABLE_AVATARS || [];
+      window.DEFAULT_AVATARS = window.DEFAULT_AVATARS || { user: null, tutor: null };
+      window.DEFAULT_AVATAR = window.DEFAULT_AVATAR || null;
+      window.PERSONA_LIST = window.PERSONA_LIST || [];
       window.profile = window.profile || {};
       window.getPersonaAccess =
         window.getPersonaAccess || (() => ({ tier: "guest" }));

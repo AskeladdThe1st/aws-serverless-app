@@ -758,6 +758,8 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
