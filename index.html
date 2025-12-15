@@ -35,6 +35,13 @@
         window.getPersonaAccess || (() => ({ tier: "guest" }));
       window.handlePersonaChange =
         window.handlePersonaChange || (() => {});
+      window.handlePersonaSelect =
+        window.handlePersonaSelect || ((persona) => window.handlePersonaChange?.(persona));
+      window.handlePersonaLockedSelect =
+        window.handlePersonaLockedSelect || ((persona) => window.handlePersonaSelect?.(persona));
+      window.handleAvatarSelect = window.handleAvatarSelect || (() => {});
+      window.handleAvatarLockedSelect =
+        window.handleAvatarLockedSelect || ((avatar) => window.handleAvatarSelect?.(avatar));
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
