@@ -42,3 +42,30 @@ Set these on the Lambda function (or in your deploy workflow variables) so the c
 - If you rely on Secrets Manager, ensure the Lambda execution role can `secretsmanager:GetSecretValue` for the configured secret names and `dynamodb:*` (or precise CRUD actions) on the session/usage tables.
 - The Lambda returns configuration diagnostics via the `status`/`health`/`version` action. Call that endpoint to confirm the Lambda can reach DynamoDB and secrets before testing the UI.
 - When changing table names or secret names, update both the Lambda env vars and any IaC/templates so the deploy workflow and runtime agree.
+
+## Quick AWS setup checklist
+Follow these steps to make sure the Lambda can start cleanly and Stripe/OpenAI calls work:
+
+1) **Create/update DynamoDB tables**
+   - Provision `calculus_sessions` and `calculus_usage` (or your custom names) in the same region as the Lambda Function URL.
+   - Confirm the Lambda execution role can read/write both tables (at minimum: `GetItem`, `PutItem`, `Query`, `UpdateItem`, and `BatchWriteItem`).
+
+2) **Provide secrets**
+   - Either set `OPENAI_API_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` as Lambda environment variables **or** create the Secrets Manager entries listed above and allow the Lambda role to call `secretsmanager:GetSecretValue` on them.
+
+3) **Stripe products/prices**
+   - Create two active Stripe prices: one for the Student Plus plan and one for the Pro plan. Copy their price IDs into `STRIPE_PRICE_STUDENT` and `STRIPE_PRICE_PRO`.
+   - Point `STRIPE_SUCCESS_URL` and `STRIPE_CANCEL_URL` at the front-end routes you want Stripe to redirect to (typically your Amplify app URLs).
+   - Make sure the Stripe webhook is configured to POST to your Lambda Function URL endpoint and uses the signing secret stored in `STRIPE_WEBHOOK_SECRET` (or the named secret).
+
+4) **Function URL configuration**
+   - Enable the Lambda Function URL and set its CORS settings to your Amplify domain, `POST` method, and `Content-Type` header. Do not rely on in-code CORS headers.
+
+5) **CI/CD variables (if you deploy from GitHub Actions)**
+   - Repository variables: `AWS_REGION`, `ECR_REPOSITORY`, `LAMBDA_FUNCTION_NAME`.
+   - Repository secret: `AWS_DEPLOY_ROLE_ARN` pointing at an IAM role that the GitHub OIDC provider can assume to push to ECR and update the Lambda image.
+   - Optional: set `GIT_SHA` and `BUILD_TIME` during builds so the `/status` action reports the deployed revision.
+
+6) **Smoke-test the live Lambda**
+   - Invoke the `status`/`health` action via the Function URL to confirm DynamoDB and Secrets Manager are reachable and the configured price IDs are returned.
+   - Send a simple `solve` or `clarify` request to verify model access works with your OpenAI key before testing from the UI.
