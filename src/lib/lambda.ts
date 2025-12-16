@@ -257,3 +257,30 @@ export function fileToBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+export async function fetchProfile(userId: string, userRole: "guest" | "user" = "guest") {
+  return callLambda({ action: "profile", user_id: userId }, userRole);
+}
+
+export async function saveAvatar(
+  userId: string,
+  userRole: "guest" | "user",
+  userAvatar?: string,
+  tutorAvatar?: string,
+  persona?: string,
+) {
+  return callLambda(
+    {
+      action: "save_avatar",
+      user_id: userId,
+      user_avatar: userAvatar,
+      tutor_avatar: tutorAvatar,
+      persona,
+    },
+    userRole,
+  );
+}
+
+export async function saveMode(userId: string, userRole: "guest" | "user", mode: string) {
+  return callLambda({ action: "mode", user_id: userId, mode }, userRole);
+}

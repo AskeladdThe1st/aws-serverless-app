@@ -8,11 +8,12 @@ import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, createCheckoutSession, fetchProfile, saveAvatar, saveMode } from '@/lib/lambda';
 import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { Calculator, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WorkspaceItem, loadWorkspaces, saveWorkspaces } from '@/lib/workspaces';
+import { DEFAULT_TUTOR_AVATAR_ID, DEFAULT_USER_AVATAR_ID } from '@/config/avatars';
 
 interface ChatSession {
   id: string;
@@ -40,6 +41,8 @@ const Index = () => {
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
   const [usage, setUsage] = useState<any>(null);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [tutorAvatar, setTutorAvatar] = useState<string | null>(null);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
@@ -88,10 +91,19 @@ const Index = () => {
   const refreshUsage = useCallback(async () => {
     try {
       const { userId, userRole } = getIdentity();
-      const usagePayload = await fetchUsage(userId, userRole);
-      const payload = (usagePayload as any)?.usage ?? usagePayload;
-      setUsage(payload);
-      return payload;
+      const profile = await fetchProfile(userId, userRole);
+      const usagePayload = (profile as any)?.usage ?? (profile as any)?.user_state?.usage ?? profile;
+      setUsage(usagePayload);
+      const userState = (profile as any)?.user_state ?? {};
+      setUserAvatar(userState.user_avatar ?? userState.avatars?.selected_user ?? DEFAULT_USER_AVATAR_ID);
+      setTutorAvatar(userState.tutor_avatar ?? userState.avatars?.selected_tutor ?? DEFAULT_TUTOR_AVATAR_ID);
+      if (Array.isArray(userState.workspaces)) {
+        setWorkspaces(userState.workspaces);
+      }
+      if (userState.mode) {
+        setMode(userState.mode);
+      }
+      return usagePayload;
     } catch (error) {
       console.error('Failed to load usage', error);
       return null;
@@ -148,6 +160,14 @@ const Index = () => {
   const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
   const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
   const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   useEffect(() => {
     setWorkspaces(loadWorkspaces());
@@ -380,6 +400,20 @@ const Index = () => {
   }, [getModelAccess, selectedModel]);
 
   useEffect(() => {
+    const persistMode = async () => {
+      try {
+        const { userId, userRole } = getIdentity();
+        await saveMode(userId, userRole, mode);
+      } catch (error) {
+        console.warn('Unable to save mode preference', error);
+      }
+    };
+    if (mode) {
+      persistMode();
+    }
+  }, [mode, getIdentity]);
+
+  useEffect(() => {
     const handleFocus = () => {
       refreshUsage();
     };
@@ -544,6 +578,28 @@ const Index = () => {
       setIsCheckoutLoading(false);
     }
   };
+
+  const handleUserAvatarChange = useCallback(async (avatarId: string) => {
+    setUserAvatar(avatarId);
+    try {
+      const { userId, userRole } = getIdentity();
+      await saveAvatar(userId, userRole, avatarId, tutorAvatar || undefined);
+      await refreshUsage();
+    } catch (error) {
+      console.error('Failed to save user avatar', error);
+    }
+  }, [getIdentity, tutorAvatar, refreshUsage]);
+
+  const handleTutorAvatarChange = useCallback(async (avatarId: string) => {
+    setTutorAvatar(avatarId);
+    try {
+      const { userId, userRole } = getIdentity();
+      await saveAvatar(userId, userRole, userAvatar || undefined, avatarId, avatarId);
+      await refreshUsage();
+    } catch (error) {
+      console.error('Failed to save tutor avatar', error);
+    }
+  }, [getIdentity, userAvatar, refreshUsage]);
 
   const handleModelChange = (modelId: string) => {
     const access = getModelAccess(modelId);
@@ -1160,16 +1216,11 @@ const Index = () => {
         onConciseAnswersChange={setConciseAnswers}
         sympyVerification={sympyVerification}
         onSympyVerificationChange={setSympyVerification}
-        personaOptions={PERSONA_OPTIONS}
-        selectedPersona={profile.persona}
-        onPersonaChange={handlePersonaChange}
-        personaAccess={getPersonaAccess}
-        onPersonaLockedSelect={handlePersonaLockedSelect}
-        avatarOptions={PRESET_AVATARS}
-        selectedAvatar={profile.avatarUrl}
-        onAvatarSelect={handleAvatarSelect}
-        onAvatarUpload={handleAvatarUpload}
-        isUploadingAvatar={isAvatarUploading}
+        userAvatar={userAvatar}
+        tutorAvatar={tutorAvatar}
+        plan={usage?.plan || (getPlan() ?? 'guest')}
+        onUserAvatarChange={handleUserAvatarChange}
+        onTutorAvatarChange={handleTutorAvatarChange}
       />
 
       <LoginModal open={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
