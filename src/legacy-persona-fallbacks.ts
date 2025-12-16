@@ -6,46 +6,41 @@
 const globalAny = window as Record<string, unknown>;
 const noop = () => {};
 
-if (typeof globalAny.handleAvatarUpload !== "function") {
-  globalAny.handleAvatarUpload = noop;
-}
+const ensureGlobal = (
+  key: string,
+  value: unknown,
+  predicate: (current: unknown) => boolean = (current) => typeof current === "undefined",
+) => {
+  if (predicate(globalAny[key])) {
+    globalAny[key] = value;
+  }
+};
 
-if (typeof globalAny.handleAvatarSelect !== "function") {
-  globalAny.handleAvatarSelect = noop;
-}
+const noopFns = [
+  "handleAvatarUpload",
+  "handleAvatarSelect",
+  "handlePersonaSelect",
+  "handlePersonaLockedSelect",
+  "handleAvatarLockedSelect",
+  "handlePersonaLockedClick",
+  "getPersonaAccess",
+];
 
-if (typeof globalAny.handlePersonaSelect !== "function") {
-  globalAny.handlePersonaSelect = noop;
-}
+noopFns.forEach((fn) => ensureGlobal(fn, noop, (current) => typeof current !== "function"));
 
-if (typeof globalAny.handlePersonaLockedSelect !== "function") {
-  globalAny.handlePersonaLockedSelect = noop;
-}
+ensureGlobal("personaLocked", false);
+ensureGlobal("isAvatarUploading", false);
+ensureGlobal("profile", {});
 
-if (typeof globalAny.personaLocked === "undefined") {
-  globalAny.personaLocked = false;
-}
+const emptyArrays = [
+  "PRESET_AVATARS",
+  "AVAILABLE_AVATARS",
+  "PERSONA_LIST",
+  "DEFAULT_AVATARS",
+  "PERSONA_OPTIONS",
+];
 
-if (typeof globalAny.PRESET_AVATARS === "undefined") {
-  globalAny.PRESET_AVATARS = [];
-}
+emptyArrays.forEach((key) => ensureGlobal(key, []));
 
-if (typeof globalAny.AVAILABLE_AVATARS === "undefined") {
-  globalAny.AVAILABLE_AVATARS = [];
-}
-
-if (typeof globalAny.PERSONA_LIST === "undefined") {
-  globalAny.PERSONA_LIST = [];
-}
-
-if (typeof globalAny.DEFAULT_AVATARS === "undefined") {
-  globalAny.DEFAULT_AVATARS = [];
-}
-
-if (typeof globalAny.tutorAvatar === "undefined") {
-  globalAny.tutorAvatar = null;
-}
-
-if (typeof globalAny.userAvatar === "undefined") {
-  globalAny.userAvatar = null;
-}
+ensureGlobal("tutorAvatar", null);
+ensureGlobal("userAvatar", null);
