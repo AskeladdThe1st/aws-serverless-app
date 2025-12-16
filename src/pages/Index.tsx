@@ -14,6 +14,7 @@ import { Calculator, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WorkspaceItem, loadWorkspaces, saveWorkspaces } from '@/lib/workspaces';
 import { DEFAULT_TUTOR_AVATAR_ID, DEFAULT_USER_AVATAR_ID } from '@/config/avatars';
+import { LAMBDA_URL } from '@/config/api';
 
 interface ChatSession {
   id: string;
@@ -51,8 +52,6 @@ const Index = () => {
   const { user, loading: authLoading } = useAuth();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
-
-  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
   const getIdentity = useCallback(() => {
     const userId = user ? (user as any).sub || user.email : getOrCreateUserId();
@@ -160,6 +159,14 @@ const Index = () => {
   const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
   const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
   const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   useEffect(() => {
     setWorkspaces(loadWorkspaces());

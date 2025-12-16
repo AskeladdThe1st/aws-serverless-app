@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const LAMBDA_URL =
-  "https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/";
+import { LAMBDA_URL } from "@/config/api";
 
 // Get or create user ID from localStorage
 export function getOrCreateUserId(): string {
