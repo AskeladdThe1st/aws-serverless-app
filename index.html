@@ -12,12 +12,12 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js?v=20251109"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js?v=20251109"></script>
     
-    <title>Calculus Agent - AI-Powered Calculus Problem Solver</title>
-    <meta name="description" content="Solve calculus problems instantly with GPT-4 Vision and SymPy. Upload images, type problems, or paste equations for step-by-step solutions." />
-    <meta name="author" content="Calculus Agent" />
+    <title>Math Tutor Agent - Your AI Math Companion</title>
+    <meta name="description" content="Math Tutor Agent is your AI math companion powered by GPT-4 Vision and SymPy. Upload images, type problems, or paste equations for guided, step-by-step solutions." />
+    <meta name="author" content="Math Tutor Agent" />
 
-    <meta property="og:title" content="Calculus Agent - AI-Powered Calculus Problem Solver" />
-    <meta property="og:description" content="Solve calculus problems instantly with GPT-4 Vision and SymPy. Upload images, type problems, or paste equations for step-by-step solutions." />
+    <meta property="og:title" content="Math Tutor Agent - Your AI Math Companion" />
+    <meta property="og:description" content="Math Tutor Agent pairs GPT-4 Vision with SymPy to tackle math problems from images or text with clear, guided steps." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
@@ -27,6 +27,27 @@
   </head>
 
   <body>
+    <script>
+      // Define legacy globals early to prevent ReferenceErrors before the bundle loads
+      window.PERSONA_OPTIONS = window.PERSONA_OPTIONS || [];
+      window.PRESET_AVATARS = window.PRESET_AVATARS || [];
+      window.AVAILABLE_AVATARS = window.AVAILABLE_AVATARS || [];
+      window.DEFAULT_AVATARS = window.DEFAULT_AVATARS || { user: null, tutor: null };
+      window.DEFAULT_AVATAR = window.DEFAULT_AVATAR || null;
+      window.PERSONA_LIST = window.PERSONA_LIST || [];
+      window.profile = window.profile || {};
+      window.getPersonaAccess =
+        window.getPersonaAccess || (() => ({ tier: "guest" }));
+      window.handlePersonaChange =
+        window.handlePersonaChange || (() => {});
+      window.handlePersonaSelect =
+        window.handlePersonaSelect || ((persona) => window.handlePersonaChange?.(persona));
+      window.handlePersonaLockedSelect =
+        window.handlePersonaLockedSelect || ((persona) => window.handlePersonaSelect?.(persona));
+      window.handleAvatarSelect = window.handleAvatarSelect || (() => {});
+      window.handleAvatarLockedSelect =
+        window.handleAvatarLockedSelect || ((avatar) => window.handleAvatarSelect?.(avatar));
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
