@@ -468,6 +468,23 @@ def build_workspace_state(record: dict) -> list:
             ),
         )
 
+    if requested_model in STUDENT_MODELS and user_role == "guest":
+        return respond(
+            401,
+            ensure_meta_fields(
+                {
+                    "error": "login_required",
+                    "message": "Sign in to use advanced models.",
+                    "usage": info,
+                    "login_required": True,
+                },
+                user_id,
+                user_role,
+                usage_info=info,
+            ),
+        )
+    return None
+
 def build_user_state(
     user_id: str,
     user_role: str,
@@ -502,6 +519,11 @@ def build_user_state(
         "config": {"avatars_enabled": True, "workspace_enabled": True, "modes_enabled": True},
     }
 
+def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
+    info = calculate_usage_info(user_id, user_role)
+    entitlement_gate = check_model_entitlement(user_id, user_role, requested_model, info)
+    if entitlement_gate:
+        return entitlement_gate
 
 def build_profile_payload(
     user_id: str,
@@ -785,6 +807,8 @@ def lambda_handler(event, context):
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
         global _REQUEST_ORIGIN
         _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
 
         config = _config_status()
 
