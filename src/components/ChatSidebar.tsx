@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Plus, Trash2, MessageSquare, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Menu, X, ChevronLeft, ChevronRight, Folder, FolderPlus, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from './UserAvatar';
 import { UsageCard } from './UsageCard';
+import { WorkspaceItem } from '@/lib/workspaces';
 
 export interface Chat {
   id: string;
@@ -20,21 +21,41 @@ interface ChatSidebarProps {
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onOpenPricing: () => void;
+  onCreateWorkspace: () => void;
+  onSelectWorkspace: (id: string) => void;
+  workspaces: WorkspaceItem[];
   usage?: {
     problems_left?: number;
     limit?: number | null;
     subscription_status?: string;
     upgrade_required?: boolean;
+    plan?: string;
   };
+  planLabel?: string;
 }
 
-export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDeleteChat, onOpenPricing, usage }: ChatSidebarProps) => {
+export const ChatSidebar = ({
+  chats,
+  activeChat,
+  onNewChat,
+  onSelectChat,
+  onDeleteChat,
+  onOpenPricing,
+  onCreateWorkspace,
+  onSelectWorkspace,
+  workspaces,
+  usage,
+  planLabel
+}: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const maxProblems = usage?.limit === null ? undefined : usage?.limit || 20;
   const problemsLeft = usage?.limit === null ? maxProblems : usage?.problems_left ?? maxProblems ?? 0;
   const isUnlimited = usage?.limit === null;
+  const normalizedPlan = (planLabel || usage?.plan || '').toLowerCase();
+  const isProPlan = normalizedPlan === 'pro' || (usage?.subscription_status || '').toLowerCase() === 'pro';
+  const planDisplay = planLabel || usage?.plan || 'guest';
 
   const handleDeleteClick = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
@@ -43,6 +64,15 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
+
+  const sectionHeading = (label: string) => (
+    <div className={cn(
+      'flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 mb-2',
+      isCollapsed && 'justify-center'
+    )}>
+      <span className="whitespace-nowrap">{label}</span>
+    </div>
+  );
 
   return (
     <>
@@ -67,152 +97,186 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static top-0 left-0 h-screen bg-sidebar-bg border-r border-sidebar-border flex flex-col transition-all duration-300 z-40 flex-shrink-0",
-          isCollapsed ? "w-16" : "w-[280px]",
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          'fixed lg:static top-0 left-0 h-screen bg-sidebar-bg border-r border-sidebar-border flex flex-col transition-all duration-300 z-40 flex-shrink-0',
+          isCollapsed ? 'w-16' : 'w-[300px]',
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        {/* Header with Toggle */}
+        {/* Header with brand and collapse */}
         <div className="p-4 border-b border-sidebar-border flex items-center justify-between gap-2">
           {!isCollapsed ? (
-            <>
-              <Button
-                onClick={() => {
-                  onNewChat();
-                  setIsOpen(false);
-                }}
-                className="flex-1 bg-primary hover:opacity-90 text-primary-foreground font-medium transition-opacity"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                New Chat
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleCollapse}
-                className="hidden lg:flex text-muted-foreground hover:opacity-70 flex-shrink-0 transition-opacity"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-            </>
-          ) : (
-            <TooltipProvider>
-              <div className="flex flex-col gap-2 w-full items-center">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() => {
-                        onNewChat();
-                        setIsOpen(false);
-                      }}
-                      size="icon"
-                      className="bg-primary hover:opacity-90 text-primary-foreground transition-opacity"
-                    >
-                      <Plus className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>New Chat</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={toggleCollapse}
-                      className="text-muted-foreground hover:opacity-70 transition-opacity"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Expand Sidebar</p>
-                  </TooltipContent>
-                </Tooltip>
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <Sparkles className="h-4 w-4" />
               </div>
-            </TooltipProvider>
+              <div className="leading-tight">
+                <p className="text-sm font-semibold text-foreground">Math Tutor Agent</p>
+                <p className="text-xs text-muted-foreground">AI workspace</p>
+              </div>
+            </div>
+          ) : (
+            <Sparkles className="h-5 w-5 text-primary" />
           )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleCollapse}
+            className="hidden lg:flex text-muted-foreground hover:opacity-70 flex-shrink-0 transition-opacity"
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </Button>
         </div>
 
-        {/* Chat History */}
-        <div className="flex-1 overflow-hidden">
-          {!isCollapsed && (
-            <div className="px-4 py-3 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Chat History
-            </div>
-          )}
-          <ScrollArea className={cn("h-[calc(100vh-200px)]", isCollapsed && "h-[calc(100vh-240px)]")}>
-            <div className={cn("pb-4", isCollapsed ? "px-1" : "px-2")}>
-              <TooltipProvider>
-                {chats.map((chat) => (
-                  <Tooltip key={chat.id}>
-                    <TooltipTrigger asChild>
-                      <div
-                        onClick={() => {
-                          onSelectChat(chat.id);
-                          setIsOpen(false);
-                        }}
-                        className={cn(
-                          "group relative flex items-center gap-2 mb-1 rounded-lg cursor-pointer transition-all",
-                          "hover:bg-sidebar-hover",
-                          activeChat === chat.id ? "bg-sidebar-hover" : "bg-transparent",
-                          isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
-                        )}
-                      >
-                        <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
-                        
-                        {!isCollapsed && (
-                          <>
-                            <span className="flex-1 text-sm text-foreground truncate min-w-0">
-                              {chat.title}
-                            </span>
-                            
-                            {/* Delete Icon - visible on hover */}
-                            <button
-                              onClick={(e) => handleDeleteClick(e, chat.id)}
-                              className="flex-shrink-0 p-1 hover:opacity-70 rounded transition-opacity opacity-0 group-hover:opacity-100"
-                              aria-label="Delete chat"
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-xs">
-                      <p className="text-xs break-words">{chat.title}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-                
-                {chats.length === 0 && !isCollapsed && (
-                  <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                    No chat history yet.<br />Start a new chat!
+        <ScrollArea className="flex-1">
+          <div className={cn('p-3 space-y-6', isCollapsed && 'px-2')}>            
+            {/* Workspaces */}
+            <div>
+              {sectionHeading('Workspaces')}
+              <div className="space-y-2">
+                {workspaces.length === 0 && !isCollapsed && (
+                  <div className="text-sm text-muted-foreground px-3 py-2 rounded-lg bg-muted/30 border border-sidebar-border/60">
+                    Workspace folders will appear here.
                   </div>
                 )}
-              </TooltipProvider>
+                {workspaces.map((workspace) => (
+                  <button
+                    key={workspace.id}
+                    onClick={() => {
+                      onSelectWorkspace(workspace.id);
+                      setIsOpen(false);
+                    }}
+                    className={cn(
+                      'group w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors bg-transparent hover:bg-sidebar-hover',
+                      isCollapsed && 'justify-center'
+                    )}
+                  >
+                    <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    {!isCollapsed && (
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground truncate">{workspace.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">Workspace</p>
+                      </div>
+                    )}
+                  </button>
+                ))}
+                <Button
+                  variant="outline"
+                  size={isCollapsed ? 'icon' : 'sm'}
+                  onClick={() => {
+                    onCreateWorkspace();
+                    setIsOpen(false);
+                  }}
+                  className={cn('w-full justify-center', isCollapsed && 'h-9 px-0')}
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  {!isCollapsed && <span className="ml-2 text-sm">Create Workspace</span>}
+                </Button>
+              </div>
             </div>
-          </ScrollArea>
-        </div>
 
-        {/* Usage Card */}
-        <UsageCard
-          problemsLeft={problemsLeft}
-          maxProblems={maxProblems}
-          isUnlimited={isUnlimited}
-          statusLabel={usage?.subscription_status}
-          onSeePlans={onOpenPricing}
-          onUpgrade={onOpenPricing}
-          isCollapsed={isCollapsed}
-        />
+            {/* Chat History */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                {sectionHeading('Chat History')}
+                {!isCollapsed && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      onNewChat();
+                      setIsOpen(false);
+                    }}
+                    className="h-8 px-3 text-xs font-semibold"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Chat
+                  </Button>
+                )}
+              </div>
+              <div className={cn('space-y-1', isCollapsed && 'space-y-1.5')}
+              >
+                <TooltipProvider>
+                  {chats.map((chat) => (
+                    <Tooltip key={chat.id}>
+                      <TooltipTrigger asChild>
+                        <div
+                          onClick={() => {
+                            onSelectChat(chat.id);
+                            setIsOpen(false);
+                          }}
+                          className={cn(
+                            'group relative flex items-center gap-3 rounded-lg cursor-pointer transition-colors',
+                            'hover:bg-sidebar-hover',
+                            activeChat === chat.id ? 'bg-sidebar-hover' : 'bg-transparent',
+                            isCollapsed ? 'px-2.5 py-2 justify-center' : 'px-3 py-2'
+                          )}
+                        >
+                          <MessageSquare className={cn('h-4 w-4 text-muted-foreground flex-shrink-0', isCollapsed && 'h-5 w-5')} />
 
-        {/* User Avatar at Bottom */}
-        <div className={cn(
-          "p-4 border-t border-sidebar-border",
-          isCollapsed && "flex justify-center"
-        )}>
-          <UserAvatar isCollapsed={isCollapsed} />
+                          {!isCollapsed && (
+                            <>
+                              <span className="flex-1 text-sm text-foreground truncate min-w-0">
+                                {chat.title}
+                              </span>
+                              <button
+                                onClick={(e) => handleDeleteClick(e, chat.id)}
+                                className="flex-shrink-0 p-1 rounded hover:bg-muted/60 transition-colors"
+                                aria-label="Delete chat"
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="text-xs break-words">{chat.title}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+
+                  {chats.length === 0 && !isCollapsed && (
+                    <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                      No chat history yet.<br />Start a new chat!
+                    </div>
+                  )}
+                </TooltipProvider>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Account */}
+        <div className="border-t border-sidebar-border p-4 space-y-3">
+          {!isCollapsed && (
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Account</p>
+                <p className="text-sm font-medium text-foreground capitalize">{planDisplay}</p>
+              </div>
+            </div>
+          )}
+
+          <UsageCard
+            problemsLeft={problemsLeft}
+            maxProblems={maxProblems}
+            isUnlimited={isUnlimited}
+            statusLabel={usage?.subscription_status}
+            onSeePlans={onOpenPricing}
+            onUpgrade={onOpenPricing}
+            isCollapsed={isCollapsed}
+            showUpgrade={!isProPlan}
+            showSeePlans={false}
+          />
+
+          <div className={cn('border border-sidebar-border/60 rounded-lg px-3 py-2.5 flex items-center gap-3', isCollapsed && 'justify-center')}
+          >
+            <UserAvatar isCollapsed={isCollapsed} />
+            {!isCollapsed && (
+              <div className="text-sm text-muted-foreground">Stay within your workspace and history.</div>
+            )}
+          </div>
         </div>
       </aside>
     </>
