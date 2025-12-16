@@ -69,6 +69,8 @@ ALLOWED_MODELS = {*FREE_MODELS, *STUDENT_MODELS, *PRO_MODELS}
 DEFAULT_USER_AVATAR_ID = "user-default"
 DEFAULT_TUTOR_AVATAR_ID = "tutor-classic"
 
+ALLOWED_MODES = ["homework", "practice", "exam"]
+
 USER_AVATAR_OPTIONS = [
     {"id": DEFAULT_USER_AVATAR_ID, "label": "Default", "tier": "free"},
     {"id": "user-graph", "label": "Graph Explorer", "tier": "student"},
@@ -308,6 +310,7 @@ def get_usage_record(user_id: str, user_role: str = "guest") -> dict:
                 "user_avatar": None,
                 "tutor_avatar": None,
                 "workspaces": [],
+                "mode": "homework",
             }
             usage_table.put_item(Item=item)
             return item
@@ -321,6 +324,12 @@ def get_usage_record(user_id: str, user_role: str = "guest") -> dict:
             changed = True
         if "workspaces" not in item:
             item["workspaces"] = []
+            changed = True
+        if "mode" not in item:
+            item["mode"] = "homework"
+            changed = True
+        if item.get("mode") not in ALLOWED_MODES:
+            item["mode"] = "homework"
             changed = True
         if item.get("usage_date") != today:
             item["usage_date"] = today
@@ -443,7 +452,6 @@ def build_workspace_state(record: dict) -> list:
     workspaces = record.get("workspaces") if isinstance(record, dict) else []
     return workspaces if isinstance(workspaces, list) else []
 
-
 def build_profile_payload(
     user_id: str,
     user_role: str,
@@ -456,16 +464,62 @@ def build_profile_payload(
     avatars = build_avatar_state(record, plan)
     workspaces = build_workspace_state(record)
 
+def build_user_state(
+    user_id: str,
+    user_role: str,
+    usage_info: dict | None = None,
+    record: dict | None = None,
+) -> dict:
+    record = record or get_usage_record(user_id, user_role)
+    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
+    plan = usage.get("plan") or _normalize_plan(record, user_role)
+    avatars = build_avatar_state(record, plan)
+    workspaces = build_workspace_state(record)
+    mode = record.get("mode") or "homework"
+    if mode not in ALLOWED_MODES:
+        mode = "homework"
+
+    return {
+        "plan": plan,
+        "usage": usage,
+        "usageCount": usage.get("used_today"),
+        "usageLimit": usage.get("limit"),
+        "user_avatar": record.get("user_avatar"),
+        "tutor_avatar": record.get("tutor_avatar"),
+        "persona": avatars.get("selected_tutor"),
+        "avatars": avatars,
+        "workspaces": workspaces,
+        "mode": mode,
+        "modes": {"active": mode, "available": ALLOWED_MODES},
+        "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
+        "subscription_status": record.get("subscription_status", "inactive"),
+        "subscription_id": record.get("subscription_id"),
+        "stripe_customer_id": record.get("stripe_customer_id"),
+        "config": {"avatars_enabled": True, "workspace_enabled": True, "modes_enabled": True},
+    }
+
+
+def build_profile_payload(
+    user_id: str,
+    user_role: str,
+    usage_info: dict | None = None,
+    record: dict | None = None,
+) -> dict:
+    record = record or get_usage_record(user_id, user_role)
+    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
+    plan = usage.get("plan") or _normalize_plan(record, user_role)
+    state = build_user_state(user_id, user_role, usage_info=usage, record=record)
+
     return {
         "usage": usage,
         "plan": plan,
         "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
-        "avatars": avatars,
-        "workspaces": workspaces,
-        "config": {
-            "avatars_enabled": True,
-            "workspace_enabled": True,
-        },
+        "avatars": state.get("avatars"),
+        "workspaces": state.get("workspaces", []),
+        "mode": state.get("mode"),
+        "modes": state.get("modes"),
+        "config": state.get("config", {}),
+        "user_state": state,
     }
 
 
@@ -480,6 +534,8 @@ def ensure_meta_fields(
     if not isinstance(body, dict):
         return profile
     enriched = {**profile, **body}
+    if "user_state" not in enriched:
+        enriched["user_state"] = profile.get("user_state")
     if "usage" in body and usage_info:
         enriched["usage"] = usage_info
     return enriched
@@ -768,6 +824,8 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
+        config = _config_status()
+
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -926,6 +984,10 @@ def lambda_handler(event, context):
                 ),
             )
 
+        if action in {"user_state", "load_user_state", "state"}:
+            profile = build_profile_payload(user_id, user_role)
+            return respond(200, profile)
+
         if action == "usage":
             profile = build_profile_payload(user_id, user_role)
             return respond(200, profile)
@@ -955,7 +1017,19 @@ def lambda_handler(event, context):
             if "tutor_avatar" in body:
                 record["tutor_avatar"] = str(body.get("tutor_avatar"))
                 updated = True
+            if "persona" in body:
+                record["tutor_avatar"] = str(body.get("persona"))
+                updated = True
             if updated:
+                usage_table.put_item(Item=record)
+            profile = build_profile_payload(user_id, user_role, record=record)
+            return respond(200, profile)
+
+        if action in {"save_persona", "update_persona", "persona"}:
+            record = get_usage_record(user_id, user_role)
+            persona_choice = body.get("persona")
+            if persona_choice:
+                record["tutor_avatar"] = str(persona_choice)
                 usage_table.put_item(Item=record)
             profile = build_profile_payload(user_id, user_role, record=record)
             return respond(200, profile)
@@ -977,6 +1051,15 @@ def lambda_handler(event, context):
             workspaces_payload = body.get("workspaces")
             if isinstance(workspaces_payload, list):
                 record["workspaces"] = workspaces_payload
+                usage_table.put_item(Item=record)
+            profile = build_profile_payload(user_id, user_role, record=record)
+            return respond(200, profile)
+
+        if action in {"mode", "update_mode", "save_mode"}:
+            record = get_usage_record(user_id, user_role)
+            requested_mode = str(body.get("mode") or body.get("active_mode") or "").lower()
+            if requested_mode in ALLOWED_MODES:
+                record["mode"] = requested_mode
                 usage_table.put_item(Item=record)
             profile = build_profile_payload(user_id, user_role, record=record)
             return respond(200, profile)
