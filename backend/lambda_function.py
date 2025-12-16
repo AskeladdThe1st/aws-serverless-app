@@ -452,40 +452,21 @@ def build_workspace_state(record: dict) -> list:
     workspaces = record.get("workspaces") if isinstance(record, dict) else []
     return workspaces if isinstance(workspaces, list) else []
 
-    if requested_model in STUDENT_MODELS and user_role == "guest":
+    if requested_model in PRO_MODELS and plan != "pro":
         return respond(
-            401,
+            403,
             ensure_meta_fields(
                 {
-                    "error": "login_required",
-                    "message": "Sign in to use advanced models.",
+                    "error": "pro_model_locked",
+                    "message": "Pro models require an active Pro subscription.",
                     "usage": info,
-                    "login_required": True,
+                    "upgrade_required": True,
                 },
                 user_id,
                 user_role,
                 usage_info=info,
             ),
         )
-    return None
-
-
-def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
-    info = calculate_usage_info(user_id, user_role)
-    entitlement_gate = check_model_entitlement(user_id, user_role, requested_model, info)
-    if entitlement_gate:
-        return entitlement_gate
-
-def build_profile_payload(
-    user_id: str,
-    user_role: str,
-    usage_info: dict | None = None,
-    record: dict | None = None,
-) -> dict:
-    record = record or get_usage_record(user_id, user_role)
-    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
-    plan = usage.get("plan") or _normalize_plan(record, user_role)
-    state = build_user_state(user_id, user_role, usage_info=usage, record=record)
 
 def build_user_state(
     user_id: str,
@@ -804,6 +785,8 @@ def lambda_handler(event, context):
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
         global _REQUEST_ORIGIN
         _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
 
         config = _config_status()
 
