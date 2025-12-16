@@ -33,7 +33,7 @@ const Index = () => {
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingChats, setIsFetchingChats] = useState(true);
-  const [mode, setMode] = useState<'auto' | 'hybrid'>('auto');
+  const [mode, setMode] = useState<AnalysisModeId>('auto');
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
@@ -156,6 +156,161 @@ const Index = () => {
 
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
+  const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
+  const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
+  const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
+
+  useEffect(() => {
+    setWorkspaces(loadWorkspaces());
+  }, []);
+
+  useEffect(() => {
+    saveWorkspaces(workspaces);
+  }, [workspaces]);
 
   useEffect(() => {
     setWorkspaces(loadWorkspaces());
@@ -972,13 +1127,6 @@ const Index = () => {
             <Calculator className="h-6 w-6" />
             <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
           </div>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
-            aria-label="Settings"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
         </div>
 
         {isLandingScreen ? (
@@ -987,8 +1135,11 @@ const Index = () => {
             <div className="w-full max-w-4xl space-y-12">
               <div className="text-center">
                 <h1 className="text-4xl md:text-5xl font-semibold text-foreground">
-                  What do you want to analyze today?
+                  How can Math Tutor Agent help with your math today?
                 </h1>
+                <p className="mt-4 text-lg text-muted-foreground">
+                  Your AI copilot for step-by-step insights, visual problem solving, and reliable math checks.
+                </p>
               </div>
 
               {limitReached && (
@@ -1030,7 +1181,16 @@ const Index = () => {
                       image_preview: activeChat.clarificationImagePreview
                     };
                   }
-                  return <ChatMessage key={idx} message={messageToDisplay} />;
+                  return (
+                    <ChatMessage
+                      key={idx}
+                      message={messageToDisplay}
+                      userAvatarUrl={userAvatar}
+                      assistantAvatarUrl={activePersona?.avatar}
+                      userFallback={userInitial}
+                      assistantName={activePersona?.name}
+                    />
+                  );
                 })}
                 {isLoading && (
                   <div className="flex justify-start mb-4">
