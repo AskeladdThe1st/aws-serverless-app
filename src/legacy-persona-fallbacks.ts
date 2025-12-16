@@ -44,3 +44,4 @@ emptyArrays.forEach((key) => ensureGlobal(key, []));
 
 ensureGlobal("tutorAvatar", null);
 ensureGlobal("userAvatar", null);
+ensureGlobal("ProfileSettings", {});

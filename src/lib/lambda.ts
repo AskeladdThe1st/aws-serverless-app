@@ -15,24 +15,43 @@ export function getOrCreateUserId(): string {
 
 async function callLambda(body: any, userRole: "guest" | "user" = "guest") {
   const payload = { ...body, user_role: userRole };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
 
-  let res: Response;
-  try {
-    res = await fetch(LAMBDA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (error: any) {
-    if (error?.name === "AbortError") {
-      throw new Error("Request timed out. Please try again.");
+  const doFetch = async (timeoutMs: number) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(LAMBDA_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+  };
+
+  const timeouts = [12000, 18000];
+  let res: Response | null = null;
+  let lastError: Error | null = null;
+
+  for (const ms of timeouts) {
+    try {
+      res = await doFetch(ms);
+      break;
+    } catch (error: any) {
+      const isTimeout = error?.name === "AbortError";
+      const isNetwork = typeof error?.message === "string" && error.message.includes("Failed to fetch");
+      if (isTimeout || isNetwork) {
+        lastError = new Error("Request timed out. Please try again.");
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!res) {
+    throw lastError || new Error("Request failed before receiving a response.");
   }
 
   // Always try to read and return the JSON body, even on non-2xx
