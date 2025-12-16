@@ -1,11 +1,10 @@
 version: 1
 applications:
-  - frontend:
+  - appRoot: .
+    frontend:
       phases:
         preBuild:
           commands:
-            - nvm install 18
-            - nvm use 18
             - npm ci
         build:
           commands:
@@ -17,5 +16,5 @@ applications:
       cache:
         paths:
           - node_modules/**/*
-          - .npm/**/*
-    appRoot: .
+      runtime-versions:
+        nodejs: 18
