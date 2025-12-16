@@ -14,6 +14,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     --timeout 200 --retries 10 --index-url https://pypi.org/simple
 
+# --- Embed build metadata for quick deployment checks ---
+ARG GIT_SHA="unknown"
+ARG BUILD_TIME="unknown"
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
+
 # --- Copy application files ---
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}
 COPY graph_engine.py ${LAMBDA_TASK_ROOT}
