@@ -452,6 +452,17 @@ def build_workspace_state(record: dict) -> list:
     workspaces = record.get("workspaces") if isinstance(record, dict) else []
     return workspaces if isinstance(workspaces, list) else []
 
+def build_profile_payload(
+    user_id: str,
+    user_role: str,
+    usage_info: dict | None = None,
+    record: dict | None = None,
+) -> dict:
+    record = record or get_usage_record(user_id, user_role)
+    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
+    plan = usage.get("plan") or _normalize_plan(record, user_role)
+    avatars = build_avatar_state(record, plan)
+    workspaces = build_workspace_state(record)
 
 def build_user_state(
     user_id: str,
@@ -768,6 +779,50 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
+        global _REQUEST_ORIGIN
+        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
 
         config = _config_status()
 
@@ -1242,7 +1297,8 @@ def lambda_handler(event, context):
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            profile_record = get_usage_record(user_id, user_role)
+            messages = [{"role": "system", "content": _persona_prompt(profile_record.get("persona"), profile_record.get("plan"))}]
             for msg in history:
                 if not isinstance(msg, dict):
                     continue
