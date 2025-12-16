@@ -487,6 +487,125 @@ def build_user_state(
         "config": {"avatars_enabled": True, "workspace_enabled": True, "modes_enabled": True},
     }
 
+    return {
+        "plan": plan,
+        "usage": usage,
+        "usageCount": usage.get("used_today"),
+        "usageLimit": usage.get("limit"),
+        "user_avatar": record.get("user_avatar"),
+        "tutor_avatar": record.get("tutor_avatar"),
+        "persona": avatars.get("selected_tutor"),
+        "avatars": avatars,
+        "workspaces": workspaces,
+        "mode": mode,
+        "modes": {"active": mode, "available": ALLOWED_MODES},
+        "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
+        "subscription_status": record.get("subscription_status", "inactive"),
+        "subscription_id": record.get("subscription_id"),
+        "stripe_customer_id": record.get("stripe_customer_id"),
+        "config": {"avatars_enabled": True, "workspace_enabled": True, "modes_enabled": True},
+    }
+
+
+def build_profile_payload(
+    user_id: str,
+    user_role: str,
+    usage_info: dict | None = None,
+    record: dict | None = None,
+) -> dict:
+    record = record or get_usage_record(user_id, user_role)
+    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
+    plan = usage.get("plan") or _normalize_plan(record, user_role)
+    state = build_user_state(user_id, user_role, usage_info=usage, record=record)
+
+    return {
+        "usage": usage,
+        "plan": plan,
+        "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
+        "avatars": state.get("avatars"),
+        "workspaces": state.get("workspaces", []),
+        "mode": state.get("mode"),
+        "modes": state.get("modes"),
+        "config": state.get("config", {}),
+        "user_state": state,
+    }
+
+
+def ensure_meta_fields(
+    body: dict,
+    user_id: str,
+    user_role: str,
+    usage_info: dict | None = None,
+    record: dict | None = None,
+):
+    profile = build_profile_payload(user_id, user_role, usage_info=usage_info, record=record)
+    if not isinstance(body, dict):
+        return profile
+    enriched = {**profile, **body}
+    if "user_state" not in enriched:
+        enriched["user_state"] = profile.get("user_state")
+    if "usage" in body and usage_info:
+        enriched["usage"] = usage_info
+    return enriched
+
+
+def check_model_entitlement(
+    user_id: str, user_role: str, requested_model: str | None, usage_info: dict | None = None
+):
+    if not requested_model:
+        return None
+    if requested_model not in ALLOWED_MODELS:
+        return respond(
+            400,
+            ensure_meta_fields(
+                {"error": "unsupported_model", "message": "Model not available"},
+                user_id,
+                user_role,
+                usage_info=usage_info,
+            ),
+        )
+    info = usage_info or calculate_usage_info(user_id, user_role)
+    plan = info.get("plan")
+
+    if requested_model in PRO_MODELS and plan != "pro":
+        return respond(
+            403,
+            ensure_meta_fields(
+                {
+                    "error": "pro_model_locked",
+                    "message": "Pro models require an active Pro subscription.",
+                    "usage": info,
+                    "upgrade_required": True,
+                },
+                user_id,
+                user_role,
+                usage_info=info,
+            ),
+        )
+
+    if requested_model in STUDENT_MODELS and user_role == "guest":
+        return respond(
+            401,
+            ensure_meta_fields(
+                {
+                    "error": "login_required",
+                    "message": "Sign in to use advanced models.",
+                    "usage": info,
+                    "login_required": True,
+                },
+                user_id,
+                user_role,
+                usage_info=info,
+            ),
+        )
+    return None
+
+
+def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
+    info = calculate_usage_info(user_id, user_role)
+    entitlement_gate = check_model_entitlement(user_id, user_role, requested_model, info)
+    if entitlement_gate:
+        return entitlement_gate
 
 def build_profile_payload(
     user_id: str,
@@ -768,6 +887,52 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
+        global _REQUEST_ORIGIN
+        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
+
+        config = _config_status()
 
         config = _config_status()
 
@@ -1242,7 +1407,8 @@ def lambda_handler(event, context):
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            profile_record = get_usage_record(user_id, user_role)
+            messages = [{"role": "system", "content": _persona_prompt(profile_record.get("persona"), profile_record.get("plan"))}]
             for msg in history:
                 if not isinstance(msg, dict):
                     continue
