@@ -242,7 +242,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
                           {!isCollapsed && (
                             <>
-                              <span className="flex-1 text-sm text-foreground truncate min-w-0 group-hover:text-foreground">
+                              <span className="flex-1 pr-8 text-sm text-foreground truncate min-w-0 group-hover:text-foreground">
                                 {chat.title}
                               </span>
 
