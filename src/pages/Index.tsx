@@ -192,6 +192,7 @@ const Index = () => {
     const draftId = crypto.randomUUID();
     setPendingSessionId(draftId);
     setActiveChatId(draftId);
+    localStorage.setItem('cgpt_session_id', draftId);
     setInputValue('');
     activeRequestRef.current = null;
     setIsLoading(false);
@@ -583,7 +584,8 @@ const Index = () => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const { userId, userRole } = getIdentity();
-    let sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
+    // Prefer the in-memory draft/active chat, fall back to stored session.
+    let sessionId = pendingSessionId || activeChatId || localStorage.getItem('cgpt_session_id');
     if (!userId) return;
 
     const personaId = profile.persona || DEFAULT_PERSONA_ID;
