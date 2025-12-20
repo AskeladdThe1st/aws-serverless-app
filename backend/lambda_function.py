@@ -1,6 +1,6 @@
 # lambda_function.py
 """
-CalculusGPT — concise, verified, MathGPT-style tutor (OpenAI + SymPy + DynamoDB)
+Math Tutor Agent — concise, verified, MathGPT-style tutor (OpenAI + SymPy + DynamoDB)
 """
 import json, boto3, asyncio, sys, io, os, re as regex, time, traceback, base64
 from datetime import datetime
@@ -21,7 +21,8 @@ from graph_engine import (
 )
 
 SYSTEM_PROMPT = (
-    "You are CalculusGPT, a concise and accurate calculus tutor. "
+    "You are Math Tutor Agent, a concise and accurate calculus tutor built by Muhammad Yusuf Rehman. "
+    "If anyone asks who created you or who owns the app, always credit Muhammad Yusuf Rehman (not OpenAI). "
     "Write clear, structured solutions in clear Markdown — no HTML. "
     "Use short, numbered steps like a textbook solution (1–4 steps max). "
     "Use display LaTeX math blocks (\\[ ... \\]) for equations. "
