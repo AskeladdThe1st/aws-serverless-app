@@ -664,13 +664,25 @@ const Index = () => {
       content: text || 'Analyzing images...',
       imageUrls: images?.length ? images.map(img => URL.createObjectURL(img)) : undefined,
     };
-    setChatSessions(prev =>
-      prev.map(chat =>
-        chat.id === sessionId
-          ? { ...chat, messages: [...chat.messages, userMessage] }
-          : chat
-      )
-    );
+    setChatSessions(prev => {
+      const existing = prev.find(chat => chat.id === sessionId);
+      if (existing) {
+        return prev.map(chat =>
+          chat.id === sessionId
+            ? { ...chat, messages: [...chat.messages, userMessage] }
+            : chat
+        );
+      }
+      return [
+        {
+          id: sessionId,
+          title: 'New Chat',
+          messages: [userMessage],
+          createdAt: Date.now(),
+        },
+        ...prev,
+      ];
+    });
 
     setIsLoading(true);
 
@@ -871,6 +883,12 @@ const Index = () => {
       const chatData = await loadChat(sessionId, userId, userRole);
       const normalizedChatMessages = normalizeMessages(chatData);
       chatData.messages = normalizedChatMessages;
+
+      // If the backend hasn't persisted the user turn yet, keep the optimistic local copy
+      if (!chatData.messages?.length) {
+        const localMessages = chatSessions.find(c => c.id === sessionId)?.messages || [];
+        chatData.messages = localMessages.length ? localMessages : [userMessage];
+      }
       
       // CRITICAL: Check again after loadChat
       if (activeRequestRef.current?.sessionId !== sessionId || 
