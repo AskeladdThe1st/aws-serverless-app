@@ -1102,6 +1102,13 @@ const Index = () => {
             <Calculator className="h-6 w-6" />
             <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
           </div>
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 hover:opacity-80 rounded-lg transition-opacity text-foreground border border-border"
+            aria-label="Settings"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
         </div>
 
         {isLandingScreen ? (
@@ -1221,7 +1228,19 @@ const Index = () => {
         onTutorAvatarChange={handleTutorAvatarChange}
       />
 
-      <LoginModal open={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
+      {/* Floating settings button to ensure visibility on all breakpoints */}
+      {!isSettingsOpen && (
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="fixed top-4 right-4 z-50 rounded-full border border-border bg-background/80 backdrop-blur px-3 py-2 shadow-sm hover:opacity-90 transition-opacity"
+          aria-label="Open settings"
+        >
+          <div className="flex items-center gap-2 text-foreground">
+            <Settings className="h-4 w-4" />
+            <span className="text-sm font-medium">Settings</span>
+          </div>
+        </button>
+      )}
 
       {/* Pricing Modal */}
       <PricingModal

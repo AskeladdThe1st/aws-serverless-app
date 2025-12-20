@@ -1417,13 +1417,15 @@ def lambda_handler(event, context):
         )
 
     except Exception as e:
-        traceback.print_exc()
+        tb = traceback.format_exc()
+        print(tb)
         return {
             "statusCode": 500,
             "body": json.dumps(
                 {
                     "error": "Internal server error",
                     "details": str(e),
+                    "trace": tb,
                 }
             ),
         }
