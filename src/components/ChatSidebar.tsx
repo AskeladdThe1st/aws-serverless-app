@@ -226,7 +226,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             "group relative flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent overflow-hidden",
                             "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
-                            isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2 pr-2"
+                            isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2 pr-10"
                           )}
                           tabIndex={0}
                           role="button"
@@ -248,7 +248,13 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
-                                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-muted"
+                                className={cn(
+                                  "absolute right-2 top-1/2 -translate-y-1/2",
+                                  "w-7 h-7 flex items-center justify-center rounded",
+                                  "transition-opacity opacity-0",
+                                  "group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100",
+                                  "hover:bg-muted"
+                                )}
                                 aria-label="Delete chat"
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
