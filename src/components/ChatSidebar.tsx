@@ -241,19 +241,21 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
 
                           {!isCollapsed && (
-                            <div className="flex flex-1 min-w-0 items-center gap-2"> {/* flex wrapper for title + delete button (normal flow, no absolute positioning) */}
-                              <span className="flex-1 min-w-0 truncate text-sm text-foreground">
+                            <div className="relative flex flex-1 min-w-0 items-center"> {/* relative: anchor for overlay delete button */}
+                              <span className="flex-1 min-w-0 truncate pr-10 text-sm text-foreground">
                                 {chat.title}
                               </span>
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
                                 className={cn(
-                                  "ml-auto flex-shrink-0", // required: keep delete button at the end and prevent shrinking
-                                  "w-6 h-6 flex items-center justify-center rounded",
+                                  "absolute right-2 top-1/2 -translate-y-1/2 z-10", // overlay on the right
+                                  "h-7 w-7 grid place-items-center rounded-md",
+                                  "bg-background/70 border border-border/50 backdrop-blur-sm",
                                   "opacity-0 group-hover:opacity-100",
-                                  "hover:bg-muted transition-all",
-                                  "pointer-events-none group-hover:pointer-events-auto"
+                                  "transition-opacity",
+                                  "pointer-events-none group-hover:pointer-events-auto",
+                                  "hover:bg-muted"
                                 )}
                                 aria-label="Delete chat"
                               >
