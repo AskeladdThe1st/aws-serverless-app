@@ -9,8 +9,6 @@ interface UsageCardProps {
   isCollapsed?: boolean;
   statusLabel?: string;
   isUnlimited?: boolean;
-  showUpgrade?: boolean;
-  showSeePlans?: boolean;
 }
 
 export const UsageCard = ({
@@ -20,9 +18,7 @@ export const UsageCard = ({
   onUpgrade,
   isCollapsed = false,
   statusLabel,
-  isUnlimited = false,
-  showUpgrade = true,
-  showSeePlans = true
+  isUnlimited = false
 }: UsageCardProps) => {
   const safeMax = maxProblems || problemsLeft || 1;
   const percentage = isUnlimited ? 100 : Math.min(100, Math.max(0, ((problemsLeft ?? safeMax) / safeMax) * 100));
@@ -52,29 +48,23 @@ export const UsageCard = ({
 
       <Progress value={percentage} className="h-2" />
 
-      {(showUpgrade || showSeePlans) && (
-        <div className="flex gap-2">
-          {showSeePlans && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onSeePlans}
-              className="flex-1 text-xs"
-            >
-              See plans
-            </Button>
-          )}
-          {showUpgrade && (
-            <Button
-              size="sm"
-              onClick={onUpgrade}
-              className="flex-1 text-xs"
-            >
-              Upgrade
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm" 
+          onClick={onSeePlans}
+          className="flex-1 text-xs"
+        >
+          See plans
+        </Button>
+        <Button 
+          size="sm" 
+          onClick={onUpgrade}
+          className="flex-1 text-xs"
+        >
+          Upgrade
+        </Button>
+      </div>
     </div>
   );
 };

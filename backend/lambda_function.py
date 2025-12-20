@@ -34,12 +34,10 @@ SYSTEM_PROMPT = (
     "The SymPy verification must match the simplified derivative."
 )
 
-# Legacy persona placeholder to avoid NameError on stale requests
-_persona_prompt = ""
-
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "calculus_sessions")
+PROFILE_BUCKET = os.environ.get("PROFILE_BUCKET")
 OPENAI_SECRET_NAME = os.environ.get("OPENAI_SECRET_NAME", "calculus-agent/openai-key")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
 STRIPE_WEBHOOK_SECRET_NAME = os.environ.get("STRIPE_WEBHOOK_SECRET_NAME", "calculus-agent/stripe-webhook")
@@ -69,27 +67,31 @@ FREE_MODELS = {
 }
 ALLOWED_MODELS = {*FREE_MODELS, *STUDENT_MODELS, *PRO_MODELS}
 
-DEFAULT_USER_AVATAR_ID = "user-default"
-DEFAULT_TUTOR_AVATAR_ID = "tutor-classic"
+PERSONAS = {
+    "classic": {
+        "name": "Classic Tutor",
+        "tier": "guest",
+        "prompt": "Maintain the concise, verified calculus tutoring style.",
+    },
+    "visual": {
+        "name": "Visual Guide",
+        "tier": "student",
+        "prompt": "Lean on visual metaphors, graphs, and intuition before formal derivations.",
+    },
+    "exam": {
+        "name": "Exam Coach",
+        "tier": "pro",
+        "prompt": "Keep solutions terse, highlight common pitfalls, and add quick-check tips for exams.",
+    },
+}
 
-ALLOWED_MODES = ["homework", "practice", "exam"]
-
-USER_AVATAR_OPTIONS = [
-    {"id": DEFAULT_USER_AVATAR_ID, "label": "Default", "tier": "free"},
-    {"id": "user-graph", "label": "Graph Explorer", "tier": "student"},
-    {"id": "user-pro", "label": "Pro Analyst", "tier": "pro"},
-]
-
-TUTOR_AVATAR_OPTIONS = [
-    {"id": DEFAULT_TUTOR_AVATAR_ID, "label": "Math Tutor", "tier": "free"},
-    {"id": "tutor-clarity", "label": "Clarity Coach", "tier": "student"},
-    {"id": "tutor-pro", "label": "Expert Mentor", "tier": "pro"},
-]
+DEFAULT_PERSONA = "classic"
 
 # ----------------- AWS Clients -----------------
 dynamo = boto3.resource("dynamodb", region_name=REGION)
 sessions_table = dynamo.Table(SESSIONS_TABLE)
 usage_table = dynamo.Table(USAGE_TABLE)
+s3 = boto3.client("s3", region_name=REGION) if PROFILE_BUCKET else None
 CONFIG_CHECK = None
 CONFIG_CHECK_AT = 0
 CONFIG_TTL_SECONDS = 300
@@ -310,35 +312,13 @@ def get_usage_record(user_id: str, user_role: str = "guest") -> dict:
                 "subscription_status": "inactive",
                 "usage_date": today,
                 "usage_count": 0,
-                "user_avatar": None,
-                "tutor_avatar": None,
-                "workspaces": [],
-                "mode": "homework",
             }
             usage_table.put_item(Item=item)
             return item
         _normalize_plan(item, user_role)
-        changed = False
-        if "user_avatar" not in item:
-            item["user_avatar"] = None
-            changed = True
-        if "tutor_avatar" not in item:
-            item["tutor_avatar"] = None
-            changed = True
-        if "workspaces" not in item:
-            item["workspaces"] = []
-            changed = True
-        if "mode" not in item:
-            item["mode"] = "homework"
-            changed = True
-        if item.get("mode") not in ALLOWED_MODES:
-            item["mode"] = "homework"
-            changed = True
         if item.get("usage_date") != today:
             item["usage_date"] = today
             item["usage_count"] = 0
-            changed = True
-        if changed:
             usage_table.put_item(Item=item)
         return item
     except ClientError as e:
@@ -347,8 +327,8 @@ def get_usage_record(user_id: str, user_role: str = "guest") -> dict:
         ) from e
 
 
-def calculate_usage_info(user_id: str, user_role: str = "guest", record: dict | None = None) -> dict:
-    record = record or get_usage_record(user_id, user_role)
+def calculate_usage_info(user_id: str, user_role: str = "guest") -> dict:
+    record = get_usage_record(user_id, user_role)
     plan = _normalize_plan(record, user_role)
     status = (record.get("subscription_status") or "inactive").lower()
     is_paid = plan in {"student", "pro"} or status in {"active", "trialing", "past_due"}
@@ -369,13 +349,84 @@ def calculate_usage_info(user_id: str, user_role: str = "guest", record: dict | 
     }
 
 
+def _persona_allowed(plan: str, persona_id: str | None) -> bool:
+    if not persona_id or persona_id not in PERSONAS:
+        return False
+    tier = PERSONAS[persona_id].get("tier", "guest")
+    if tier == "pro":
+        return plan == "pro"
+    if tier == "student":
+        return plan in {"student", "pro"}
+    return True
+
+
+def _persona_prompt(persona_id: str | None = None, plan: str | None = None) -> str:
+    plan_normalized = (plan or "guest").lower()
+    persona_key = persona_id if _persona_allowed(plan_normalized, persona_id) else DEFAULT_PERSONA
+    persona = PERSONAS.get(persona_key) or PERSONAS[DEFAULT_PERSONA]
+    prompt = persona.get("prompt")
+    if prompt:
+        return f"{SYSTEM_PROMPT}\n\nPersona focus: {prompt}"
+    return SYSTEM_PROMPT
+
+
+def _profile_payload(record: dict) -> dict:
+    plan = _normalize_plan(record.copy(), "user")
+    persona = record.get("persona") or DEFAULT_PERSONA
+    if not _persona_allowed(plan, persona):
+        persona = DEFAULT_PERSONA
+    avatar_url = record.get("avatar_url") or record.get("avatarKey") or record.get("avatar")
+    return {
+        "persona": persona if persona in PERSONAS else DEFAULT_PERSONA,
+        "avatar_url": avatar_url,
+    }
+
+
+def save_avatar_to_s3(user_id: str, avatar_b64: str) -> tuple[str, str]:
+    if not s3 or not PROFILE_BUCKET:
+        raise RuntimeError("Avatar uploads are disabled because PROFILE_BUCKET is not configured.")
+    key = f"avatars/{user_id}.png"
+    body = base64.b64decode(avatar_b64.split(",")[-1])
+    s3.put_object(
+        Bucket=PROFILE_BUCKET,
+        Key=key,
+        Body=body,
+        ContentType="image/png",
+        ACL="public-read",
+    )
+    url = f"https://{PROFILE_BUCKET}.s3.amazonaws.com/{key}"
+    return url, key
+
+
+def update_profile_record(
+    user_id: str,
+    user_role: str,
+    persona: str | None = None,
+    avatar_url: str | None = None,
+    avatar_b64: str | None = None,
+) -> dict:
+    record = get_usage_record(user_id, user_role)
+    plan = _normalize_plan(record, user_role)
+    if persona and _persona_allowed(plan, persona):
+        record["persona"] = persona
+    if avatar_b64:
+        url, key = save_avatar_to_s3(user_id, avatar_b64)
+        record["avatar_url"] = url
+        record["avatar_key"] = key
+    elif avatar_url is not None:
+        record["avatar_url"] = avatar_url
+        record.pop("avatar_key", None)
+    usage_table.put_item(Item=record)
+    return _profile_payload(record)
+
+
 def increment_usage(user_id: str, user_role: str = "guest") -> dict:
     try:
         record = get_usage_record(user_id, user_role)
         record["usage_date"] = _today()
         record["usage_count"] = int(record.get("usage_count") or 0) + 1
         usage_table.put_item(Item=record)
-        return calculate_usage_info(user_id, user_role, record=record)
+        return calculate_usage_info(user_id, user_role)
     except ClientError as e:
         raise RuntimeError(
             f"DynamoDB increment_usage failed: {e.response.get('Error', {}).get('Message', str(e))}"
@@ -414,210 +465,36 @@ def update_subscription(
         ) from e
 
 
-def _avatar_locked(tier: str, plan: str) -> bool:
-    tier = (tier or "free").lower()
-    plan = (plan or "guest").lower()
-    if tier == "free":
-        return False
-    if tier == "student":
-        return plan == "guest"
-    if tier == "pro":
-        return plan != "pro"
-    return False
-
-
-def build_avatar_state(record: dict, plan: str) -> dict:
-    selected_user = record.get("user_avatar") or DEFAULT_USER_AVATAR_ID
-    selected_tutor = record.get("tutor_avatar") or DEFAULT_TUTOR_AVATAR_ID
-
-    user_options = [
-        {**opt, "locked": _avatar_locked(opt.get("tier"), plan)} for opt in USER_AVATAR_OPTIONS
-    ]
-    tutor_options = [
-        {**opt, "locked": _avatar_locked(opt.get("tier"), plan)} for opt in TUTOR_AVATAR_OPTIONS
-    ]
-
-    if selected_user not in {opt["id"] for opt in user_options}:
-        selected_user = DEFAULT_USER_AVATAR_ID
-    if selected_tutor not in {opt["id"] for opt in tutor_options}:
-        selected_tutor = DEFAULT_TUTOR_AVATAR_ID
-
-    return {
-        "selected_user": selected_user,
-        "selected_tutor": selected_tutor,
-        "user_options": user_options,
-        "tutor_options": tutor_options,
-        "persona": selected_tutor,
-    }
-
-
-def build_workspace_state(record: dict) -> list:
-    workspaces = record.get("workspaces") if isinstance(record, dict) else []
-    return workspaces if isinstance(workspaces, list) else []
-
-    if requested_model in PRO_MODELS and plan != "pro":
-        return respond(
-            403,
-            ensure_meta_fields(
-                {
-                    "error": "pro_model_locked",
-                    "message": "Pro models require an active Pro subscription.",
-                    "usage": info,
-                    "upgrade_required": True,
-                },
-                user_id,
-                user_role,
-                usage_info=info,
-            ),
-        )
-
-    if requested_model in STUDENT_MODELS and user_role == "guest":
-        return respond(
-            401,
-            ensure_meta_fields(
-                {
-                    "error": "login_required",
-                    "message": "Sign in to use advanced models.",
-                    "usage": info,
-                    "login_required": True,
-                },
-                user_id,
-                user_role,
-                usage_info=info,
-            ),
-        )
-    return None
-
-def build_user_state(
-    user_id: str,
-    user_role: str,
-    usage_info: dict | None = None,
-    record: dict | None = None,
-) -> dict:
-    record = record or get_usage_record(user_id, user_role)
-    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
-    plan = usage.get("plan") or _normalize_plan(record, user_role)
-    avatars = build_avatar_state(record, plan)
-    workspaces = build_workspace_state(record)
-    mode = record.get("mode") or "homework"
-    if mode not in ALLOWED_MODES:
-        mode = "homework"
-
-    return {
-        "plan": plan,
-        "usage": usage,
-        "usageCount": usage.get("used_today"),
-        "usageLimit": usage.get("limit"),
-        "user_avatar": record.get("user_avatar"),
-        "tutor_avatar": record.get("tutor_avatar"),
-        "persona": avatars.get("selected_tutor"),
-        "avatars": avatars,
-        "workspaces": workspaces,
-        "mode": mode,
-        "modes": {"active": mode, "available": ALLOWED_MODES},
-        "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
-        "subscription_status": record.get("subscription_status", "inactive"),
-        "subscription_id": record.get("subscription_id"),
-        "stripe_customer_id": record.get("stripe_customer_id"),
-        "config": {"avatars_enabled": True, "workspace_enabled": True, "modes_enabled": True},
-    }
-
-def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str | None = None):
-    info = calculate_usage_info(user_id, user_role)
-    entitlement_gate = check_model_entitlement(user_id, user_role, requested_model, info)
-    if entitlement_gate:
-        return entitlement_gate
-
-def build_profile_payload(
-    user_id: str,
-    user_role: str,
-    usage_info: dict | None = None,
-    record: dict | None = None,
-) -> dict:
-    record = record or get_usage_record(user_id, user_role)
-    usage = usage_info or calculate_usage_info(user_id, user_role, record=record)
-    plan = usage.get("plan") or _normalize_plan(record, user_role)
-    state = build_user_state(user_id, user_role, usage_info=usage, record=record)
-
-    return {
-        "usage": usage,
-        "plan": plan,
-        "limits": {"guest_daily_limit": GUEST_DAILY_LIMIT, "free_daily_limit": FREE_DAILY_LIMIT},
-        "avatars": state.get("avatars"),
-        "workspaces": state.get("workspaces", []),
-        "mode": state.get("mode"),
-        "modes": state.get("modes"),
-        "config": state.get("config", {}),
-        "user_state": state,
-    }
-
-
-def ensure_meta_fields(
-    body: dict,
-    user_id: str,
-    user_role: str,
-    usage_info: dict | None = None,
-    record: dict | None = None,
-):
-    profile = build_profile_payload(user_id, user_role, usage_info=usage_info, record=record)
-    if not isinstance(body, dict):
-        return profile
-    enriched = {**profile, **body}
-    if "user_state" not in enriched:
-        enriched["user_state"] = profile.get("user_state")
-    if "usage" in body and usage_info:
-        enriched["usage"] = usage_info
-    return enriched
-
-
 def check_model_entitlement(
     user_id: str, user_role: str, requested_model: str | None, usage_info: dict | None = None
 ):
     if not requested_model:
         return None
     if requested_model not in ALLOWED_MODELS:
-        return respond(
-            400,
-            ensure_meta_fields(
-                {"error": "unsupported_model", "message": "Model not available"},
-                user_id,
-                user_role,
-                usage_info=usage_info,
-            ),
-        )
+        return respond(400, {"error": "unsupported_model", "message": "Model not available"})
     info = usage_info or calculate_usage_info(user_id, user_role)
     plan = info.get("plan")
 
     if requested_model in PRO_MODELS and plan != "pro":
         return respond(
             403,
-            ensure_meta_fields(
-                {
-                    "error": "pro_model_locked",
-                    "message": "Pro models require an active Pro subscription.",
-                    "usage": info,
-                    "upgrade_required": True,
-                },
-                user_id,
-                user_role,
-                usage_info=info,
-            ),
+            {
+                "error": "pro_model_locked",
+                "message": "Pro models require an active Pro subscription.",
+                "usage": info,
+                "upgrade_required": True,
+            },
         )
 
     if requested_model in STUDENT_MODELS and user_role == "guest":
         return respond(
             401,
-            ensure_meta_fields(
-                {
-                    "error": "login_required",
-                    "message": "Sign in to use advanced models.",
-                    "usage": info,
-                    "login_required": True,
-                },
-                user_id,
-                user_role,
-                usage_info=info,
-            ),
+            {
+                "error": "login_required",
+                "message": "Sign in to use advanced models.",
+                "usage": info,
+                "login_required": True,
+            },
         )
     return None
 
@@ -632,31 +509,21 @@ def enforce_usage(user_id: str, user_role: str = "guest", requested_model: str |
         if info.get("plan") == "guest":
             return respond(
                 429,
-                ensure_meta_fields(
-                    {
-                        "error": "guest_limit_reached",
-                        "message": "Guests get 4 problems per day. Log in for more.",
-                        "usage": info,
-                        "login_required": True,
-                    },
-                    user_id,
-                    user_role,
-                    usage_info=info,
-                ),
+                {
+                    "error": "guest_limit_reached",
+                    "message": "Guests get 4 problems per day. Log in for more.",
+                    "usage": info,
+                    "login_required": True,
+                },
             )
         return respond(
             429,
-            ensure_meta_fields(
-                {
-                    "error": "limit_reached",
-                    "message": "Daily limit reached. Upgrade to continue.",
-                    "usage": info,
-                    "upgrade_required": True,
-                },
-                user_id,
-                user_role,
-                usage_info=info,
-            ),
+            {
+                "error": "limit_reached",
+                "message": "Daily limit reached. Upgrade to continue.",
+                "usage": info,
+                "upgrade_required": True,
+            },
         )
     return info
 
@@ -825,48 +692,6 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -956,24 +781,15 @@ def lambda_handler(event, context):
         action = alias_map.get(action_key, action_key)
         text = str(body.get("text") or "").strip()
 
-        user_id = str(body.get("user_id") or "guest")
-        user_role = (body.get("user_role") or ("guest" if user_id == "guest" else "user")).lower()
-        session_id = body.get("session_id")
-        manual_mode_input = body.get("manual_mode")
-
         if not config.get("ok", True) and action != "status":
             return respond(
                 500,
-                ensure_meta_fields(
-                    {
-                        "error": "ConfigError",
-                        "message": "Backend configuration is incomplete. Fix the issues below and redeploy.",
-                        "issues": config.get("errors", []),
-                        "warnings": config.get("warnings", []),
-                    },
-                    user_id,
-                    user_role,
-                ),
+                {
+                    "error": "ConfigError",
+                    "message": "Backend configuration is incomplete. Fix the issues below and redeploy.",
+                    "issues": config.get("errors", []),
+                    "warnings": config.get("warnings", []),
+                },
             )
 
         # Always treat images as a list
@@ -989,121 +805,41 @@ def lambda_handler(event, context):
         requested_model = body.get("model") or "gpt-4o-mini"
         model_choice = requested_model if requested_model in ALLOWED_MODELS else "gpt-4o-mini"
 
+        user_id = str(body.get("user_id") or "guest")
+        user_role = (body.get("user_role") or ("guest" if user_id == "guest" else "user")).lower()
+        session_id = body.get("session_id")
+        manual_mode_input = body.get("manual_mode")
+
         if action == "status":
             return respond(
                 200,
-                ensure_meta_fields(
-                    {
-                        "status": "ok",
-                        "git_sha": GIT_SHA,
-                        "build_time": BUILD_TIME,
-                        "config": config,
-                        "known_actions": sorted(
-                            {
-                                "usage",
-                                "profile",
-                                "avatars",
-                                "save_avatar",
-                                "workspaces",
-                                "save_workspaces",
-                                "stripe_checkout",
-                                "classify",
-                                "create",
-                                "load",
-                                "list",
-                                "delete",
-                                "update",
-                                "manual_graph",
-                                "graph",
-                                "clarify_graph",
-                                "solve",
-                            }
-                        ),
-                    },
-                    user_id,
-                    user_role,
-                ),
+                {
+                    "status": "ok",
+                    "git_sha": GIT_SHA,
+                    "build_time": BUILD_TIME,
+                    "config": config,
+                    "known_actions": sorted(
+                        {
+                            "usage",
+                            "stripe_checkout",
+                            "classify",
+                            "create",
+                            "load",
+                            "list",
+                            "delete",
+                            "update",
+                            "profile",
+                            "manual_graph",
+                            "graph",
+                            "clarify_graph",
+                            "solve",
+                        }
+                    ),
+                },
             )
-
-        if action in {"user_state", "load_user_state", "state"}:
-            profile = build_profile_payload(user_id, user_role)
-            return respond(200, profile)
 
         if action == "usage":
-            profile = build_profile_payload(user_id, user_role)
-            return respond(200, profile)
-
-        if action == "profile":
-            profile = build_profile_payload(user_id, user_role)
-            return respond(200, profile)
-
-        if action == "avatars":
-            profile = build_profile_payload(user_id, user_role)
-            return respond(
-                200,
-                ensure_meta_fields(
-                    {"avatars": profile.get("avatars", {}), "usage": profile.get("usage")},
-                    user_id,
-                    user_role,
-                    usage_info=profile.get("usage"),
-                ),
-            )
-
-        if action in {"save_avatar", "update_avatar"}:
-            record = get_usage_record(user_id, user_role)
-            updated = False
-            if "user_avatar" in body:
-                record["user_avatar"] = str(body.get("user_avatar"))
-                updated = True
-            if "tutor_avatar" in body:
-                record["tutor_avatar"] = str(body.get("tutor_avatar"))
-                updated = True
-            if "persona" in body:
-                record["tutor_avatar"] = str(body.get("persona"))
-                updated = True
-            if updated:
-                usage_table.put_item(Item=record)
-            profile = build_profile_payload(user_id, user_role, record=record)
-            return respond(200, profile)
-
-        if action in {"save_persona", "update_persona", "persona"}:
-            record = get_usage_record(user_id, user_role)
-            persona_choice = body.get("persona")
-            if persona_choice:
-                record["tutor_avatar"] = str(persona_choice)
-                usage_table.put_item(Item=record)
-            profile = build_profile_payload(user_id, user_role, record=record)
-            return respond(200, profile)
-
-        if action in {"workspaces", "workspace_list"}:
-            profile = build_profile_payload(user_id, user_role)
-            return respond(
-                200,
-                ensure_meta_fields(
-                    {"workspaces": profile.get("workspaces", [])},
-                    user_id,
-                    user_role,
-                    usage_info=profile.get("usage"),
-                ),
-            )
-
-        if action in {"save_workspaces", "workspace_save"}:
-            record = get_usage_record(user_id, user_role)
-            workspaces_payload = body.get("workspaces")
-            if isinstance(workspaces_payload, list):
-                record["workspaces"] = workspaces_payload
-                usage_table.put_item(Item=record)
-            profile = build_profile_payload(user_id, user_role, record=record)
-            return respond(200, profile)
-
-        if action in {"mode", "update_mode", "save_mode"}:
-            record = get_usage_record(user_id, user_role)
-            requested_mode = str(body.get("mode") or body.get("active_mode") or "").lower()
-            if requested_mode in ALLOWED_MODES:
-                record["mode"] = requested_mode
-                usage_table.put_item(Item=record)
-            profile = build_profile_payload(user_id, user_role, record=record)
-            return respond(200, profile)
+            return respond(200, {"usage": calculate_usage_info(user_id, user_role)})
 
         if action in {"stripe_checkout", "stripe-checkout", "stripe checkout"}:
             plan_choice = str(body.get("plan") or "student").lower()
@@ -1115,34 +851,13 @@ def lambda_handler(event, context):
             else:
                 price_id = body.get("price_id") or STRIPE_PRICE_STUDENT
             if not price_id:
-                return respond(
-                    400,
-                    ensure_meta_fields(
-                        {"error": "Missing Stripe price_id for selected plan"},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(400, {"error": "Missing Stripe price_id for selected plan"})
             try:
                 stripe_api_key = _get_stripe_api_key()
             except Exception as e:
-                return respond(
-                    500,
-                    ensure_meta_fields(
-                        {"error": "StripeConfigError", "message": str(e)},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(500, {"error": "StripeConfigError", "message": str(e)})
             if not stripe_api_key:
-                return respond(
-                    500,
-                    ensure_meta_fields(
-                        {"error": "StripeConfigError", "message": "Stripe secret is empty"},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(500, {"error": "StripeConfigError", "message": "Stripe secret is empty"})
             try:
                 stripe.api_key = stripe_api_key
                 session = stripe.checkout.Session.create(
@@ -1154,25 +869,13 @@ def lambda_handler(event, context):
                 )
                 return respond(
                     200,
-                    ensure_meta_fields(
-                        {
-                            "checkout_url": session.url,
-                            "usage": calculate_usage_info(user_id, user_role),
-                            "plan": plan_choice,
-                        },
-                        user_id,
-                        user_role,
-                    ),
+                    {
+                        "checkout_url": session.url,
+                        "usage": calculate_usage_info(user_id, user_role),
+                    },
                 )
             except Exception as e:
-                return respond(
-                    500,
-                    ensure_meta_fields(
-                        {"error": "StripeError", "message": str(e)},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(500, {"error": "StripeError", "message": str(e)})
 
         # classification endpoint
         if action == "classify":
@@ -1180,21 +883,9 @@ def lambda_handler(event, context):
             if gate:
                 return gate
             if not image_list:
-                return respond(
-                    400,
-                    ensure_meta_fields(
-                        {"error": "Image required for classification"}, user_id, user_role
-                    ),
-                )
+                return respond(400, {"error": "Image required for classification"})
             is_graph = asyncio.run(is_graph_image(image_list[0], model_choice))
-            return respond(
-                200,
-                ensure_meta_fields(
-                    {"classification": "graph" if is_graph else "not_graph"},
-                    user_id,
-                    user_role,
-                ),
-            )
+            return respond(200, {"classification": "graph" if is_graph else "not_graph"})
 
         # CRUD
         if action == "create":
@@ -1204,46 +895,58 @@ def lambda_handler(event, context):
                 body.get("title") or "New Chat",
                 manual_mode=manual_mode_input or False,
             )
-            return respond(200, ensure_meta_fields(clean_decimals(item), user_id, user_role))
+            return respond(200, clean_decimals(item))
         if action == "load":
             item = get_session(user_id, session_id)
-            return respond(200, ensure_meta_fields(clean_decimals(item or {}), user_id, user_role))
+            return respond(200, clean_decimals(item or {}))
         if action == "list":
             items = list_sessions(user_id)
-            return respond(200, ensure_meta_fields(clean_decimals(items), user_id, user_role))
+            return respond(200, clean_decimals(items))
         if action == "delete":
             delete_session(user_id, session_id)
-            return respond(200, ensure_meta_fields({"deleted": True}, user_id, user_role))
+            return respond(200, {"deleted": True})
         if action == "update":
             if not user_id or not session_id:
-                return respond(
-                    400,
-                    ensure_meta_fields({"error": "Missing user_id or session_id"}, user_id, user_role),
-                )
+                return respond(400, {"error": "Missing user_id or session_id"})
             update_fields = {}
             if "title" in body and body["title"] is not None:
                 update_fields["title"] = body["title"]
             if "manual_mode" in body:
                 update_fields["manual_mode"] = bool(body["manual_mode"])
             if not update_fields:
-                return respond(
-                    400,
-                    ensure_meta_fields({"error": "Nothing to update"}, user_id, user_role),
-                )
+                return respond(400, {"error": "Nothing to update"})
             update_session(user_id, session_id, update_fields)
-            return respond(
-                200,
-                ensure_meta_fields(
-                    {"message": "Session updated", "updated": update_fields}, user_id, user_role
-                ),
-            )
+            return respond(200, {"message": "Session updated", "updated": update_fields})
+        if action == "profile":
+            if not user_id:
+                return respond(400, {"error": "user_id_required"})
+            operation = (body.get("operation") or "get").lower()
+            persona_choice = body.get("persona")
+            avatar_b64 = body.get("avatar_data")
+            avatar_url = body.get("avatar_url")
+            if operation == "get":
+                record = get_usage_record(user_id, user_role)
+                return respond(200, {"profile": _profile_payload(record)})
+            if operation == "update":
+                try:
+                    profile = update_profile_record(
+                        user_id,
+                        user_role,
+                        persona=persona_choice,
+                        avatar_url=avatar_url,
+                        avatar_b64=avatar_b64,
+                    )
+                    return respond(200, {"profile": profile})
+                except Exception as exc:
+                    return respond(400, {"error": "profile_update_failed", "message": str(exc)})
+            return respond(400, {"error": "invalid_profile_operation"})
         if action == "manual_graph":
             features = body.get("graph_features") or {}
             result = analyze_graph_from_features(features)
             if user_id and session_id and get_session(user_id, session_id):
                 append_message(user_id, session_id, "user", "[Manual graph features submitted]")
                 append_message(user_id, session_id, "assistant", result.get("analysis", ""))
-            return respond(200, ensure_meta_fields(clean_decimals(result), user_id, user_role))
+            return respond(200, clean_decimals(result))
         if manual_mode_input is not None and user_id and session_id and get_session(user_id, session_id):
             update_manual_mode(user_id, session_id, manual_mode_input)
 
@@ -1254,12 +957,7 @@ def lambda_handler(event, context):
                 return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return respond(
-                    400,
-                    ensure_meta_fields(
-                        {"error": "Image required for graph analysis"}, user_id, user_role
-                    ),
-                )
+                return respond(400, {"error": "Image required for graph analysis"})
 
             # derivative text redirect
             if text.lower().strip() and any(term in text.lower() for term in [
@@ -1289,10 +987,7 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
             usage_info = increment_usage(user_id, user_role)
             payload["usage"] = usage_info
-            return respond(
-                200,
-                ensure_meta_fields(clean_decimals(payload), user_id, user_role, usage_info=usage_info),
-            )
+            return respond(200, clean_decimals(payload))
 
         # CLARIFY GRAPH
         if action == "clarify_graph":
@@ -1301,14 +996,7 @@ def lambda_handler(event, context):
                 return gate
             graph_image = image_list[0] if image_list else None
             if not graph_image:
-                return respond(
-                    400,
-                    ensure_meta_fields(
-                        {"error": "Image required for graph clarification"},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(400, {"error": "Image required for graph clarification"})
             session = get_session(user_id, session_id) if (user_id and session_id) else None
             history = session.get("messages", []) if session else []
             if text:
@@ -1322,7 +1010,7 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
-            return respond(200, ensure_meta_fields(clean_decimals(payload), user_id, user_role))
+            return respond(200, clean_decimals(payload))
 
         # SOLVE (unchanged structure, now multi-image)
         if action == "solve":
@@ -1330,10 +1018,7 @@ def lambda_handler(event, context):
             if isinstance(gate, dict) and gate.get("statusCode"):
                 return gate
             if not text and not image_list:
-                return respond(
-                    400,
-                    ensure_meta_fields({"error": "No input provided."}, user_id, user_role),
-                )
+                return respond(400, {"error": "No input provided."})
             if not text and image_list:
                 text = "Extract all problems from this image and solve them."
             session = get_session(user_id, session_id) if (user_id and session_id) else None
@@ -1356,21 +1041,11 @@ def lambda_handler(event, context):
                     "image_url": {"url": f"data:image/png;base64,{img_b64}"},
                 })
             if not user_content:
-                return respond(
-                    400,
-                    ensure_meta_fields({"error": "No input provided."}, user_id, user_role),
-                )
+                return respond(400, {"error": "No input provided."})
             messages.append({"role": "user", "content": user_content})
             chat_res = asyncio.run(_chat(messages, 1400))
             if "error" in chat_res:
-                return respond(
-                    500,
-                    ensure_meta_fields(
-                        {"error": "OpenAIError", "details": chat_res["error"]},
-                        user_id,
-                        user_role,
-                    ),
-                )
+                return respond(500, {"error": "OpenAIError", "details": chat_res["error"]})
             reply = chat_res["text"]
             code = ""
             code_match = regex.search(r"```(?:python)?(.*?)```", reply, flags=regex.S)
@@ -1378,14 +1053,7 @@ def lambda_handler(event, context):
             if code and not _verify_expression(code):
                 fix_res = asyncio.run(_chat([{"role": "system", "content": "Fix this SymPy code to match the solution."}, {"role": "user", "content": code}], 300))
                 if "error" in fix_res:
-                    return respond(
-                        500,
-                        ensure_meta_fields(
-                            {"error": "OpenAIError", "details": fix_res["error"]},
-                            user_id,
-                            user_role,
-                        ),
-                    )
+                    return respond(500, {"error": "OpenAIError", "details": fix_res["error"]})
                 fixed = regex.search(r"```(?:python)?(.*?)```", fix_res["text"], flags=regex.S)
                 if fixed:
                     code = fixed.group(1).strip()
@@ -1396,34 +1064,25 @@ def lambda_handler(event, context):
             usage_info = increment_usage(user_id, user_role)
             return respond(
                 200,
-                ensure_meta_fields(
-                    clean_decimals(
-                        {
-                            "expression": code or "",
-                            "result": result or "",
-                            "steps": reply or "",
-                            "usage": usage_info,
-                        }
-                    ),
-                    user_id,
-                    user_role,
-                    usage_info=usage_info,
+                clean_decimals(
+                    {
+                        "expression": code or "",
+                        "result": result or "",
+                        "steps": reply or "",
+                        "usage": usage_info,
+                    }
                 ),
             )
 
-        return respond(
-            400,
-            ensure_meta_fields({"error": f"Unknown action: {action_raw}"}, user_id, user_role),
-        )
+        return respond(400, {"error": f"Unknown action: {action_raw}"})
 
-    except Exception as e:
+    except Exception as exc:
         traceback.print_exc()
-        return {
-            "statusCode": 500,
-            "body": json.dumps(
-                {
-                    "error": "Internal server error",
-                    "details": str(e),
-                }
-            ),
-        }
+        return respond(
+            500,
+            {
+                "error": "Internal server error",
+                "message": str(exc),
+                "config": _config_status(force_refresh=True),
+            },
+        )
