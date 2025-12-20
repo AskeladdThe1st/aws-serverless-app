@@ -13,6 +13,7 @@ import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/component
 import { ModeStatus } from '@/components/ModeStatus';
 import { AnalysisModeId } from '@/components/ModeSelector';
 import { Calculator, Settings } from 'lucide-react';
+import einsteinIcon from '@/assets/einstein.png';
 
 interface ChatSession {
   id: string;
@@ -1143,8 +1144,14 @@ const Index = () => {
         <div className="bg-transparent px-4 py-4 space-y-3">
           <div className="flex items-center justify-between text-foreground">
             <div className="flex items-center gap-2">
-              <Calculator className="h-6 w-6" />
-              <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
+              <img
+                src={einsteinIcon}
+                alt="Math Tutor Agent Einstein icon"
+                className="h-7 w-7"
+                loading="eager"
+                decoding="async"
+              />
+              <div className="text-lg font-semibold">Math Tutor Agent</div>
             </div>
             <button
               onClick={() => setIsSettingsOpen(true)}
