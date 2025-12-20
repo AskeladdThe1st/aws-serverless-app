@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import {
   signIn,

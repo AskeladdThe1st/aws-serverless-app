@@ -8,7 +8,6 @@ import { AuthProvider } from "@/hooks/useAuth";
 import "@/lib/amplify-config";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import WorkspacePage from "./pages/Workspace";
 
 const queryClient = new QueryClient();
 
@@ -22,7 +21,6 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/workspaces/:id" element={<WorkspacePage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

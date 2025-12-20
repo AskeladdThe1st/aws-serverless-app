@@ -13,7 +13,7 @@ interface ResponseViewProps {
 // Also removes SymPy verification sections.
 function normalizeMathDelimiters(input: string): string {
   // Remove SymPy verification section (including variations in casing and formatting)
-  const cleaned = input
+  let cleaned = input
     .replace(/verification with sympy[\s\S]*?(?=\n\n[A-Z]|\n\n$|$)/gi, '')
     .replace(/```python[\s\S]*?from sympy[\s\S]*?```/gi, '')
     .replace(/###?\s*verification[\s\S]*?(?=\n\n[A-Z#]|\n\n$|$)/gi, '');
