@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessage, Message } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
@@ -7,13 +6,13 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
-import { getLambdaUrl } from '@/config/api';
+import { useAuth } from '@/hooks/useAuth';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
+import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
+import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/components/personas';
+import { ModeStatus } from '@/components/ModeStatus';
+import { AnalysisModeId } from '@/components/ModeSelector';
 import { Calculator, Settings } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { WorkspaceItem, loadWorkspaces, saveWorkspaces } from '@/lib/workspaces';
-import { DEFAULT_TUTOR_AVATAR_ID, DEFAULT_USER_AVATAR_ID } from '@/config/avatars';
-import { LAMBDA_URL } from '@/config/api';
 
 interface ChatSession {
   id: string;
@@ -27,7 +26,6 @@ interface ChatSession {
 
 
 const Index = () => {
-  const navigate = useNavigate();
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -41,35 +39,74 @@ const Index = () => {
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
   const [usage, setUsage] = useState<any>(null);
-  const [userAvatar, setUserAvatar] = useState<string | null>(null);
-  const [tutorAvatar, setTutorAvatar] = useState<string | null>(null);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
+  const [profile, setProfile] = useState<{ persona: string; avatarUrl?: string }>({ persona: DEFAULT_PERSONA_ID });
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
-  const lambdaUrl = getLambdaUrl();
+  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
+
+  const getIdentity = useCallback(() => {
+    const userId = user ? (user as any).sub || user.email : getOrCreateUserId();
+    const userRole: 'guest' | 'user' = user ? 'user' : 'guest';
+    return { userId, userRole };
+  }, [user]);
+
+  const getPlan = useCallback((): 'guest' | 'free' | 'student' | 'pro' => {
+    const status = (usage?.subscription_status || '').toLowerCase();
+    let plan = (usage?.plan || (user ? 'free' : 'guest')).toLowerCase();
+    if (plan === 'guest' && user) plan = 'free';
+    if (!['guest', 'free', 'student', 'pro'].includes(plan)) {
+      plan = user ? 'free' : 'guest';
+    }
+    if (!['pro', 'student'].includes(plan) && ['active', 'trialing', 'past_due'].includes(status)) {
+      plan = 'student';
+    }
+    return plan as 'guest' | 'free' | 'student' | 'pro';
+  }, [usage?.plan, usage?.subscription_status, user]);
+
+  const getModelAccess = useCallback((modelId: string): ModelAccessState => {
+    const plan = getPlan();
+    const model = MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
+    if (model.tier === 'pro') {
+      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: model.tier };
+    }
+    if (model.tier === 'student' && plan === 'guest') {
+      return { locked: true, reason: 'login', tier: model.tier };
+    }
+    return { locked: false, tier: model.tier };
+  }, [getPlan]);
+
+  const getPersonaAccess = useCallback((personaId: string) => {
+    const plan = getPlan();
+    const persona = PERSONA_OPTIONS.find(p => p.id === personaId) || PERSONA_OPTIONS[0];
+    if (persona.tier === 'pro') {
+      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: persona.tier };
+    }
+    if (persona.tier === 'student' && plan === 'guest') {
+      return { locked: true, reason: 'login', tier: persona.tier };
+    }
+    if (persona.tier === 'student' && plan === 'free') {
+      return { locked: true, reason: 'upgrade', tier: persona.tier };
+    }
+    return { locked: false, tier: persona.tier };
+  }, [getPlan]);
+
+  const guestLimitReached = getPlan() === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+  const freeLimitReached = getPlan() === 'free' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
 
   const refreshUsage = useCallback(async () => {
     try {
       const { userId, userRole } = getIdentity();
-      const profile = await fetchProfile(userId, userRole);
-      const usagePayload = (profile as any)?.usage ?? (profile as any)?.user_state?.usage ?? profile;
-      setUsage(usagePayload);
-      const userState = (profile as any)?.user_state ?? {};
-      setUserAvatar(userState.user_avatar ?? userState.avatars?.selected_user ?? DEFAULT_USER_AVATAR_ID);
-      setTutorAvatar(userState.tutor_avatar ?? userState.avatars?.selected_tutor ?? DEFAULT_TUTOR_AVATAR_ID);
-      if (Array.isArray(userState.workspaces)) {
-        setWorkspaces(userState.workspaces);
-      }
-      if (userState.mode) {
-        setMode(userState.mode);
-      }
-      return usagePayload;
+      const usagePayload = await fetchUsage(userId, userRole);
+      const payload = (usagePayload as any)?.usage ?? usagePayload;
+      setUsage(payload);
+      return payload;
     } catch (error) {
       console.error('Failed to load usage', error);
       return null;
@@ -102,198 +139,34 @@ const Index = () => {
     setIsLoading(false);
   }, []);
 
-  const handleCreateWorkspace = useCallback(() => {
-    const name = prompt('Name your workspace');
-    if (!name) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const workspace: WorkspaceItem = {
-      id: crypto.randomUUID(),
-      name: trimmed,
-      createdAt: Date.now()
+  const normalizeProfile = useCallback((data: any) => {
+    const personaId = data?.persona;
+    const personaValid = PERSONA_OPTIONS.some(p => p.id === personaId);
+    return {
+      persona: personaValid ? personaId : DEFAULT_PERSONA_ID,
+      avatarUrl: data?.avatar_url || data?.avatarUrl,
     };
-    setWorkspaces((prev) => [...prev, workspace]);
-    navigate(`/workspaces/${workspace.id}`, { state: { workspace } });
-  }, [navigate]);
+  }, []);
 
-  const handleSelectWorkspace = useCallback((workspaceId: string) => {
-    const workspace = workspaces.find((w) => w.id === workspaceId);
-    navigate(`/workspaces/${workspaceId}`, { state: { workspace } });
-  }, [navigate, workspaces]);
+  const refreshProfile = useCallback(async () => {
+    try {
+      const { userId, userRole } = getIdentity();
+      const profilePayload = await getProfile(userId, userRole);
+      const payload = (profilePayload as any)?.profile ?? profilePayload;
+      const normalized = normalizeProfile(payload || {});
+      setProfile(normalized);
+      return normalized;
+    } catch (error) {
+      console.error('Failed to load profile', error);
+      return null;
+    }
+  }, [getIdentity, normalizeProfile]);
 
   const activeChat = chatSessions.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
   const activePersona = PERSONA_OPTIONS.find(p => p.id === profile.persona) || PERSONA_OPTIONS[0];
   const userAvatar = profile.avatarUrl || (user as any)?.picture || undefined;
   const userInitial = (user?.name || (user as any)?.email || 'You').charAt(0).toUpperCase();
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
-
-  useEffect(() => {
-    setWorkspaces(loadWorkspaces());
-  }, []);
-
-  useEffect(() => {
-    saveWorkspaces(workspaces);
-  }, [workspaces]);
 
   // Load chats from backend on mount
   useEffect(() => {
@@ -353,6 +226,11 @@ const Index = () => {
     init();
   }, [authLoading, getIdentity, refreshUsage, startNewChatDraft]);
 
+  useEffect(() => {
+    if (authLoading) return;
+    refreshProfile();
+  }, [authLoading, refreshProfile]);
+
   // Force KaTeX to re-render after new messages
   useEffect(() => {
     if (messagesContainerRef.current && typeof window !== 'undefined') {
@@ -398,18 +276,14 @@ const Index = () => {
   }, [getModelAccess, selectedModel]);
 
   useEffect(() => {
-    const persistMode = async () => {
-      try {
-        const { userId, userRole } = getIdentity();
-        await saveMode(userId, userRole, mode);
-      } catch (error) {
-        console.warn('Unable to save mode preference', error);
+    const access = getPersonaAccess(profile.persona);
+    if (access.locked) {
+      const fallback = PERSONA_OPTIONS.find(p => !getPersonaAccess(p.id).locked);
+      if (fallback) {
+        setProfile(prev => ({ ...prev, persona: fallback.id }));
       }
-    };
-    if (mode) {
-      persistMode();
     }
-  }, [mode, getIdentity]);
+  }, [getPersonaAccess, profile.persona]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -577,28 +451,6 @@ const Index = () => {
     }
   };
 
-  const handleUserAvatarChange = useCallback(async (avatarId: string) => {
-    setUserAvatar(avatarId);
-    try {
-      const { userId, userRole } = getIdentity();
-      await saveAvatar(userId, userRole, avatarId, tutorAvatar || undefined);
-      await refreshUsage();
-    } catch (error) {
-      console.error('Failed to save user avatar', error);
-    }
-  }, [getIdentity, tutorAvatar, refreshUsage]);
-
-  const handleTutorAvatarChange = useCallback(async (avatarId: string) => {
-    setTutorAvatar(avatarId);
-    try {
-      const { userId, userRole } = getIdentity();
-      await saveAvatar(userId, userRole, userAvatar || undefined, avatarId, avatarId);
-      await refreshUsage();
-    } catch (error) {
-      console.error('Failed to save tutor avatar', error);
-    }
-  }, [getIdentity, userAvatar, refreshUsage]);
-
   const handleModelChange = (modelId: string) => {
     const access = getModelAccess(modelId);
     if (access.locked) {
@@ -608,12 +460,75 @@ const Index = () => {
     setSelectedModel(modelId);
   };
 
+  const applyProfileUpdate = (payload: any) => {
+    const normalized = normalizeProfile(payload || {});
+    setProfile(normalized);
+    return normalized;
+  };
+
+  const handlePersonaLockedSelect = (personaId: string, access?: { reason?: 'login' | 'upgrade' }) => {
+    if (access?.reason === 'login') {
+      setIsLoginOpen(true);
+      return;
+    }
+    setIsPricingOpen(true);
+  };
+
+  const handlePersonaChange = async (personaId: string) => {
+    const access = getPersonaAccess(personaId);
+    if (access.locked) {
+      handlePersonaLockedSelect(personaId, access);
+      return;
+    }
+
+    applyProfileUpdate({ ...profile, persona: personaId });
+
+    try {
+      const { userId, userRole } = getIdentity();
+      const result = await updateProfile(userId, userRole, { persona: personaId });
+      const payload = (result as any)?.profile ?? result;
+      applyProfileUpdate(payload);
+    } catch (error: any) {
+      console.error('Failed to update persona', error);
+      toast({ title: 'Unable to save persona', description: error?.message || 'Please try again.', variant: 'destructive' });
+    }
+  };
+
+  const handleAvatarSelect = async (avatarUrl: string) => {
+    applyProfileUpdate({ ...profile, avatar_url: avatarUrl });
+    try {
+      const { userId, userRole } = getIdentity();
+      const result = await updateProfile(userId, userRole, { avatar_url: avatarUrl });
+      applyProfileUpdate((result as any)?.profile ?? result);
+    } catch (error: any) {
+      console.error('Failed to update avatar', error);
+      toast({ title: 'Unable to save avatar', description: error?.message || 'Please try again.', variant: 'destructive' });
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    setIsAvatarUploading(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const { userId, userRole } = getIdentity();
+      const result = await updateProfile(userId, userRole, { avatar_data: base64 });
+      applyProfileUpdate((result as any)?.profile ?? result);
+    } catch (error: any) {
+      console.error('Failed to upload avatar', error);
+      toast({ title: 'Upload failed', description: error?.message || 'Please try another image.', variant: 'destructive' });
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  };
+
   const handleSend = async (text: string, images?: File[]) => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const { userId, userRole } = getIdentity();
     let sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
     if (!userId) return;
+
+    const personaId = profile.persona || DEFAULT_PERSONA_ID;
 
     if (!sessionId) {
       const generatedId = crypto.randomUUID();
@@ -697,7 +612,7 @@ const Index = () => {
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await parseLambdaResponse(await fetch(lambdaUrl, {
+        await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -707,6 +622,7 @@ const Index = () => {
             user_id: userId,
             session_id: sessionId,
             user_role: userRole,
+            persona: personaId,
             text: text,
             images: currentChat.clarificationImages,
           }),
@@ -739,7 +655,7 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await parseLambdaResponse(await fetch(lambdaUrl, {
+          await parseLambdaResponse(await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -749,13 +665,14 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
+              persona: personaId,
               text: text || 'Solve this problem',
               images: imagesBase64,
             }),
           }));
         } else {
           // Use the new classify action
-          const classifyResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
+          const classifyResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -765,6 +682,7 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
+              persona: personaId,
               images: [imagesBase64[0]],
             }),
           }));
@@ -780,12 +698,13 @@ const Index = () => {
               user_id: userId,
               session_id: sessionId,
               user_role: userRole,
+              persona: personaId,
               images: [imagesBase64[0]],
             };
             
             if (text.trim()) payload.text = text;
             
-            const graphResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
+            const graphResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -835,25 +754,26 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await parseLambdaResponse(await fetch(lambdaUrl, {
+            await parseLambdaResponse(await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'solve',
                 mode: mode,
-              model: selectedModel,
-              user_id: userId,
-              session_id: sessionId,
-              user_role: userRole,
-              text: text || 'Solve this problem',
-              images: imagesBase64,
-            }),
-          }));
+                model: selectedModel,
+                user_id: userId,
+                session_id: sessionId,
+                user_role: userRole,
+                persona: personaId,
+                text: text || 'Solve this problem',
+                images: imagesBase64,
+              }),
+            }));
           }
         }
       } else {
         // Text only -> use solve action
-        await parseLambdaResponse(await fetch(lambdaUrl, {
+        await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -863,6 +783,7 @@ const Index = () => {
             user_id: userId,
             session_id: sessionId,
             user_role: userRole,
+            persona: personaId,
             text: text,
           }),
         }));
@@ -1088,19 +1009,32 @@ const Index = () => {
         onDeleteChat={deleteChatSession}
         onOpenPricing={() => setIsPricingOpen(true)}
         usage={usage}
-        workspaces={workspaces}
-        onCreateWorkspace={handleCreateWorkspace}
-        onSelectWorkspace={handleSelectWorkspace}
-        planLabel={getPlan()}
       />
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header - Transparent */}
-        <div className="bg-transparent px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-foreground">
-            <Calculator className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
+        <div className="bg-transparent px-4 py-4 space-y-3">
+          <div className="flex items-center justify-between text-foreground">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-6 w-6" />
+              <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
+            </div>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 hover:opacity-70 rounded-lg transition-opacity text-foreground"
+              aria-label="Settings"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="max-w-4xl w-full mx-auto">
+            <ModeStatus
+              value={mode}
+              onValueChange={setMode}
+              awaitingClarification={activeChat?.awaitingClarification}
+            />
           </div>
         </div>
 
@@ -1214,11 +1148,16 @@ const Index = () => {
         onConciseAnswersChange={setConciseAnswers}
         sympyVerification={sympyVerification}
         onSympyVerificationChange={setSympyVerification}
-        userAvatar={userAvatar}
-        tutorAvatar={tutorAvatar}
-        plan={usage?.plan || (getPlan() ?? 'guest')}
-        onUserAvatarChange={handleUserAvatarChange}
-        onTutorAvatarChange={handleTutorAvatarChange}
+        personaOptions={PERSONA_OPTIONS}
+        selectedPersona={profile.persona}
+        onPersonaChange={handlePersonaChange}
+        personaAccess={getPersonaAccess}
+        onPersonaLockedSelect={handlePersonaLockedSelect}
+        avatarOptions={PRESET_AVATARS}
+        selectedAvatar={profile.avatarUrl}
+        onAvatarSelect={handleAvatarSelect}
+        onAvatarUpload={handleAvatarUpload}
+        isUploadingAvatar={isAvatarUploading}
       />
 
       <LoginModal open={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
