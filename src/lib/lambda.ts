@@ -1,5 +1,4 @@
-const LAMBDA_URL =
-  "https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/";
+import { getLambdaUrl } from "@/config/api";
 
 // Get or create user ID from localStorage
 export function getOrCreateUserId(): string {
@@ -13,7 +12,7 @@ export function getOrCreateUserId(): string {
 }
 
 async function callLambda(body: any) {
-  const res = await fetch(LAMBDA_URL, {
+  const res = await fetch(getLambdaUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
