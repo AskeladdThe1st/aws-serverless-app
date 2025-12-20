@@ -242,11 +242,9 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
                           {!isCollapsed && (
                             <div className="flex flex-1 min-w-0 items-center gap-2"> {/* flex wrapper for title + delete button (normal flow, no absolute positioning) */}
-                              <div className="flex-1 min-w-0"> {/* required: flex-1 min-w-0 on the title container */}
-                                <span className="truncate text-sm text-foreground"> {/* truncate ONLY on the title text */}
-                                  {chat.title}
-                                </span>
-                              </div>
+                              <span className="flex-1 min-w-0 truncate text-sm text-foreground">
+                                {chat.title}
+                              </span>
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
