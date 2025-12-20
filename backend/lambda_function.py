@@ -579,10 +579,14 @@ def append_message(user_id, session_id, role, content):
     try:
         sessions_table.update_item(
             Key={"user_id": user_id, "session_id": session_id},
-            UpdateExpression="SET messages = list_append(messages, :msg), updatedAt = :t",
+            UpdateExpression=(
+                "SET messages = list_append(if_not_exists(messages, :empty_list), :msg), "
+                "updatedAt = :t"
+            ),
             ExpressionAttributeValues={
                 ":msg": [{"role": role, "content": content, "ts": now}],
                 ":t": now,
+                ":empty_list": [],
             },
         )
     except ClientError as e:

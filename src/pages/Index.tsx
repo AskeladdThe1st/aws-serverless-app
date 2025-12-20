@@ -289,11 +289,6 @@ const Index = () => {
     refreshProfile();
   }, [authLoading, refreshProfile]);
 
-  useEffect(() => {
-    if (authLoading) return;
-    refreshProfile();
-  }, [authLoading, refreshProfile]);
-
   // Force KaTeX to re-render after new messages
   useEffect(() => {
     if (messagesContainerRef.current && typeof window !== 'undefined') {
