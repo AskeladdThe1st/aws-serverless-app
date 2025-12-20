@@ -223,7 +223,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // remove overflow-hidden so the delete button is never clipped
+                            "group relative flex w-full items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // w-full ensures the row width stays consistent within the sidebar so truncation works reliably
                             "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
