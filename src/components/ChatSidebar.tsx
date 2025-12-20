@@ -255,7 +255,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </button>
-                            </>
+                            </div>
                           )}
                         </div>
                       </TooltipTrigger>
