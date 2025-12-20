@@ -1,4 +1,5 @@
-import { getLambdaUrl } from "@/config/api";
+const LAMBDA_URL =
+  "https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/";
 
 // Get or create user ID from localStorage
 export function getOrCreateUserId(): string {
@@ -11,11 +12,12 @@ export function getOrCreateUserId(): string {
   return userId;
 }
 
-async function callLambda(body: any) {
-  const res = await fetch(getLambdaUrl(), {
+async function callLambda(body: any, userRole: "guest" | "user" = "guest") {
+  const payload = { ...body, user_role: userRole };
+  const res = await fetch(LAMBDA_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 
   // Always try to read and return the JSON body, even on non-2xx
@@ -105,6 +107,33 @@ export async function deleteChat(
       action: "delete",
       user_id: userId,
       session_id: sessionId,
+    },
+    userRole,
+  );
+}
+
+export async function getProfile(userId: string, userRole: "guest" | "user" = "guest") {
+  return callLambda(
+    {
+      action: "profile",
+      operation: "get",
+      user_id: userId,
+    },
+    userRole,
+  );
+}
+
+export async function updateProfile(
+  userId: string,
+  userRole: "guest" | "user" = "guest",
+  profile: { persona?: string; avatar_url?: string; avatar_data?: string },
+) {
+  return callLambda(
+    {
+      action: "profile",
+      operation: "update",
+      user_id: userId,
+      ...profile,
     },
     userRole,
   );
@@ -220,31 +249,4 @@ export function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-export async function fetchProfile(userId: string, userRole: "guest" | "user" = "guest") {
-  return callLambda({ action: "profile", user_id: userId }, userRole);
-}
-
-export async function saveAvatar(
-  userId: string,
-  userRole: "guest" | "user",
-  userAvatar?: string,
-  tutorAvatar?: string,
-  persona?: string,
-) {
-  return callLambda(
-    {
-      action: "save_avatar",
-      user_id: userId,
-      user_avatar: userAvatar,
-      tutor_avatar: tutorAvatar,
-      persona,
-    },
-    userRole,
-  );
-}
-
-export async function saveMode(userId: string, userRole: "guest" | "user", mode: string) {
-  return callLambda({ action: "mode", user_id: userId, mode }, userRole);
 }
