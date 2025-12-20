@@ -6,6 +6,7 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { PricingModal } from '@/components/PricingModal';
 import { useToast } from '@/hooks/use-toast';
 import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
+import { getLambdaUrl } from '@/config/api';
 import { Calculator, Settings } from 'lucide-react';
 
 interface ChatSession {
@@ -37,7 +38,7 @@ const Index = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
-  const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
+  const lambdaUrl = getLambdaUrl();
 
   const refreshUsage = async () => {
     try {
@@ -354,7 +355,7 @@ const Index = () => {
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(lambdaUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -395,7 +396,7 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await parseLambdaResponse(await fetch(LAMBDA_URL, {
+          await parseLambdaResponse(await fetch(lambdaUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -410,7 +411,7 @@ const Index = () => {
           }));
         } else {
           // Use the new classify action
-          const classifyResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
+          const classifyResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -438,7 +439,7 @@ const Index = () => {
             
             if (text.trim()) payload.text = text;
             
-            const graphResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
+            const graphResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -488,7 +489,7 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await parseLambdaResponse(await fetch(LAMBDA_URL, {
+            await parseLambdaResponse(await fetch(lambdaUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -505,7 +506,7 @@ const Index = () => {
         }
       } else {
         // Text only -> use solve action
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(lambdaUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -743,7 +744,7 @@ const Index = () => {
         <div className="bg-transparent px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-foreground">
             <Calculator className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">Calculus Agent</h1>
+            <h1 className="text-lg font-semibold">Math Tutor Agent</h1>
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}

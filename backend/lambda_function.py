@@ -33,6 +33,9 @@ SYSTEM_PROMPT = (
     "The SymPy verification must match the simplified derivative."
 )
 
+# Legacy persona placeholder to avoid NameError on stale requests
+_persona_prompt = ""
+
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 USAGE_TABLE = os.environ.get("USAGE_TABLE", "calculus_usage")
 STRIPE_SECRET_NAME = os.environ.get("STRIPE_SECRET_NAME", "calculus-agent/stripe-secret")
@@ -585,6 +588,14 @@ def lambda_handler(event, context):
 
         return {"statusCode": 400, "body": json.dumps({"error": f"Unknown action: {action}"})}
 
-    except Exception:
+    except Exception as e:
         traceback.print_exc()
-        return {"statusCode": 500, "body": json.dumps({"error": "Internal server error"})}
+        return {
+            "statusCode": 500,
+            "body": json.dumps(
+                {
+                    "error": "Internal server error",
+                    "details": str(e),
+                }
+            ),
+        }
