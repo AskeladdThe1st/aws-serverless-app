@@ -223,7 +223,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex w-full items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // w-full ensures the row width stays consistent within the sidebar so truncation works reliably
+                            "group relative flex w-full min-w-0 items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
                             "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
@@ -241,15 +241,17 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
 
                           {!isCollapsed && (
-                            <div className="flex flex-1 min-w-0 items-center gap-2">
-                              <span className="flex-1 min-w-0 truncate text-sm text-foreground">{/* min-w-0 enables truncation inside flex */}
-                                {chat.title}
-                              </span>
+                            <div className="flex flex-1 min-w-0 items-center gap-2"> {/* flex wrapper for title + delete button (normal flow, no absolute positioning) */}
+                              <div className="flex-1 min-w-0"> {/* required: flex-1 min-w-0 on the title container */}
+                                <span className="truncate text-sm text-foreground"> {/* truncate ONLY on the title text */}
+                                  {chat.title}
+                                </span>
+                              </div>
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
                                 className={cn(
-                                  "ml-auto flex-shrink-0",
+                                  "ml-auto flex-shrink-0", // required: keep delete button at the end and prevent shrinking
                                   "w-6 h-6 flex items-center justify-center rounded",
                                   "opacity-0 group-hover:opacity-100",
                                   "hover:bg-muted transition-all",
