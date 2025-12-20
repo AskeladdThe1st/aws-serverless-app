@@ -223,7 +223,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent overflow-hidden",
+                            "group relative flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // remove overflow-hidden so the delete button is never clipped
                             "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
@@ -241,24 +241,25 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
 
                           {!isCollapsed && (
-                            <>
-                              <span className="flex-1 min-w-0 truncate text-sm text-foreground pr-8">
+                            <div className="flex flex-1 min-w-0 items-center gap-2">
+                              <span className="flex-1 min-w-0 truncate text-sm text-foreground">{/* min-w-0 enables truncation inside flex */}
                                 {chat.title}
                               </span>
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
                                 className={cn(
-                                  "absolute right-2 top-1/2 -translate-y-1/2",
+                                  "ml-auto flex-shrink-0",
                                   "w-6 h-6 flex items-center justify-center rounded",
                                   "opacity-0 group-hover:opacity-100",
-                                  "hover:bg-muted transition-all"
+                                  "hover:bg-muted transition-all",
+                                  "pointer-events-none group-hover:pointer-events-auto"
                                 )}
                                 aria-label="Delete chat"
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </button>
-                            </>
+                            </div>
                           )}
                         </div>
                       </TooltipTrigger>
