@@ -140,17 +140,17 @@ const Index = () => {
     return { locked: false, tier: model.tier };
   }, [getPlan]);
 
-  const getPersonaAccess = useCallback((personaId: string) => {
+  const getPersonaAccess = useCallback((personaId: string): { locked: boolean; reason?: 'login' | 'upgrade'; tier: string } => {
     const plan = getPlan();
     const persona = PERSONA_OPTIONS.find(p => p.id === personaId) || PERSONA_OPTIONS[0];
     if (persona.tier === 'pro') {
-      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: persona.tier };
+      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' as const : 'upgrade' as const, tier: persona.tier };
     }
     if (persona.tier === 'student' && plan === 'guest') {
-      return { locked: true, reason: 'login', tier: persona.tier };
+      return { locked: true, reason: 'login' as const, tier: persona.tier };
     }
     if (persona.tier === 'student' && plan === 'free') {
-      return { locked: true, reason: 'upgrade', tier: persona.tier };
+      return { locked: true, reason: 'upgrade' as const, tier: persona.tier };
     }
     return { locked: false, tier: persona.tier };
   }, [getPlan]);
