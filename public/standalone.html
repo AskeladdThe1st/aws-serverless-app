@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Calculus Agent - Powered by GPT-4 Vision</title>
+  <title>Math Tutor Agent - Powered by GPT-4 Vision</title>
   
   <!-- KaTeX CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -319,7 +319,7 @@
     <div class="header">
       <div class="header-icon">🧮</div>
       <div>
-        <div class="header-title">Calculus Agent</div>
+        <div class="header-title">Math Tutor Agent</div>
         <div class="header-subtitle">Powered by GPT-4 Vision + SymPy</div>
       </div>
     </div>
@@ -338,7 +338,7 @@
             <input 
               type="text"
               id="input" 
-              placeholder="Message Calculus Agent"
+              placeholder="Message Math Tutor Agent"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"
             />
             
@@ -375,7 +375,7 @@
     let messages = [
       {
         role: 'assistant',
-        content: "Hello! I'm your calculus assistant. I can help you solve calculus problems. You can type a problem, paste it, or upload/capture an image of it!"
+        content: "Hello! I'm your math tutor. I can help you work through math problems. You can type a question, paste it, or upload/capture an image of it!"
       }
     ];
     let isLoading = false;

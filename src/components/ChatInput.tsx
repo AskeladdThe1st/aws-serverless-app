@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { ModelSelector } from './ModelSelector';
+import { ModelAccessState, ModelSelector } from './ModelSelector';
 import { ModeSelector } from './ModeSelector';
 import { ToolsMenu } from './ToolsMenu';
 
@@ -10,6 +10,8 @@ interface ChatInputProps {
   disabled?: boolean;
   selectedModel: string;
   onModelChange: (model: string) => void;
+  modelAccess?: (modelId: string) => ModelAccessState;
+  onModelLockedSelect?: (modelId: string, access: ModelAccessState) => void;
   mode: 'auto' | 'hybrid';
   onModeChange: (mode: 'auto' | 'hybrid') => void;
   onToolSelect: (text: string) => void;
@@ -18,10 +20,12 @@ interface ChatInputProps {
 }
 
 export const ChatInput = ({ 
-  onSend, 
-  disabled, 
-  selectedModel, 
+  onSend,
+  disabled,
+  selectedModel,
   onModelChange,
+  modelAccess,
+  onModelLockedSelect,
   mode,
   onModeChange,
   onToolSelect,
@@ -212,7 +216,7 @@ export const ChatInput = ({
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Ask anything about calculus..."
+            placeholder="Ask anything about math..."
             className="flex-1 bg-transparent border-0 outline-none text-foreground placeholder:text-muted-foreground disabled:opacity-50 text-base resize-none min-h-[24px] max-h-[200px]"
             disabled={disabled}
             rows={1}
@@ -245,7 +249,13 @@ export const ChatInput = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <ModelSelector value={selectedModel} onValueChange={onModelChange} variant="compact" />
+              <ModelSelector
+                value={selectedModel}
+                onValueChange={onModelChange}
+                accessForModel={modelAccess}
+                onLockedSelect={onModelLockedSelect}
+                variant="compact"
+              />
               <button
                 onClick={handleSubmit}
                 disabled={disabled || (!input.trim() && selectedImages.length === 0)}
