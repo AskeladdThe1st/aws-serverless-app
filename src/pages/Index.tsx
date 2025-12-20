@@ -49,6 +49,64 @@ const Index = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
+  /**
+   * Normalize messages coming from the backend. The Lambda payload may use
+   * slightly different field names or content encodings depending on the
+   * deployed version. This guarantees the UI always receives Message objects
+   * with a string `content` and optional metadata we can render.
+   */
+  const normalizeMessages = useCallback((payload: any): Message[] => {
+    const rawMessages =
+      payload?.messages ||
+      payload?.Messages ||
+      payload?.chat?.messages ||
+      payload?.session?.messages ||
+      [];
+
+    if (!Array.isArray(rawMessages)) return [];
+
+    return rawMessages.map((msg: any): Message => {
+      const role: 'user' | 'assistant' = msg?.role === 'assistant' ? 'assistant' : 'user';
+      const contentRaw = msg?.content ?? msg?.message ?? msg?.text ?? '';
+
+      let content = '';
+      let imageUrls: string[] | undefined;
+
+      if (Array.isArray(contentRaw)) {
+        // Handle OpenAI multi-part messages that include text + images
+        const textParts = contentRaw
+          .filter(part => part?.type === 'text' && typeof part.text === 'string')
+          .map(part => part.text);
+        const imageParts = contentRaw
+          .filter(part => part?.type === 'image_url' && part.image_url?.url)
+          .map(part => part.image_url.url as string);
+        content = textParts.join('\n\n');
+        imageUrls = imageParts.length ? imageParts : undefined;
+      } else if (typeof contentRaw === 'object' && contentRaw !== null) {
+        content = contentRaw.text || contentRaw.content || JSON.stringify(contentRaw);
+      } else {
+        content = String(contentRaw ?? '');
+      }
+
+      // Prefer explicit message-level images, but fall back to images embedded in content
+      const mergedImageUrls =
+        msg?.imageUrls ||
+        (msg?.images && Array.isArray(msg.images) ? msg.images : undefined) ||
+        (msg?.imageUrl ? [msg.imageUrl] : undefined) ||
+        imageUrls;
+
+      return {
+        role,
+        content,
+        expression: msg?.expression || msg?.code || '',
+        result: msg?.result || msg?.answer || '',
+        steps: msg?.steps || msg?.explanation || '',
+        image_preview: msg?.image_preview,
+        imageUrls: mergedImageUrls,
+      };
+    });
+  }, []);
+
   const LAMBDA_URL = 'https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/';
 
   const getIdentity = useCallback(() => {
@@ -179,10 +237,10 @@ const Index = () => {
 
         const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
         const formattedSessions: ChatSession[] = rawSessions.map(s => ({
-          id: s.session_id,
-          title: s.title,
-          messages: s.messages || [],
-          createdAt: s.created_at
+          id: s.session_id || s.id,
+          title: s.title || s.name || 'New Chat',
+          messages: normalizeMessages(s),
+          createdAt: s.created_at || s.createdAt || Date.now()
         }));
         setChatSessions(formattedSessions);
 
@@ -197,7 +255,7 @@ const Index = () => {
           const chatData = await loadChat(savedSessionId, userId, userRole);
           setChatSessions(prev => prev.map(c =>
             c.id === savedSessionId
-              ? { ...c, messages: chatData.messages || [] }
+              ? { ...c, messages: normalizeMessages(chatData) }
               : c
           ));
         } else if (formattedSessions.length > 0) {
@@ -208,7 +266,7 @@ const Index = () => {
           const chatData = await loadChat(firstSession.id, userId, userRole);
           setChatSessions(prev => prev.map(c =>
             c.id === firstSession.id
-              ? { ...c, messages: chatData.messages || [] }
+              ? { ...c, messages: normalizeMessages(chatData) }
               : c
           ));
         } else {
@@ -224,7 +282,12 @@ const Index = () => {
     };
 
     init();
-  }, [authLoading, getIdentity, refreshUsage, startNewChatDraft]);
+  }, [authLoading, getIdentity, refreshUsage, startNewChatDraft, normalizeMessages]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    refreshProfile();
+  }, [authLoading, refreshProfile]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -309,10 +372,10 @@ const Index = () => {
       const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       const formattedSessions: ChatSession[] = rawSessions.map(s => ({
-        id: s.session_id,
-        title: s.title,
-        messages: s.messages || [],
-        createdAt: s.created_at
+        id: s.session_id || s.id,
+        title: s.title || s.name || 'New Chat',
+        messages: normalizeMessages(s),
+        createdAt: s.created_at || s.createdAt || Date.now()
       }));
       
       setChatSessions(formattedSessions);
@@ -352,7 +415,7 @@ const Index = () => {
       const chatData = await loadChat(chatId, userId, userRole);
       setChatSessions(prev => prev.map(c =>
         c.id === chatId
-          ? { ...c, messages: chatData.messages || c.messages }
+          ? { ...c, messages: normalizeMessages(chatData) || c.messages }
           : c
       ));
 
@@ -798,6 +861,8 @@ const Index = () => {
 
       // Reload messages from DynamoDB after backend updates
       const chatData = await loadChat(sessionId, userId, userRole);
+      const normalizedChatMessages = normalizeMessages(chatData);
+      chatData.messages = normalizedChatMessages;
       
       // CRITICAL: Check again after loadChat
       if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -915,10 +980,10 @@ const Index = () => {
       const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
       let formattedSessions: ChatSession[] = rawSessions.map(s => ({
-        id: s.session_id,
-        title: s.title,
-        messages: s.messages || [],
-        createdAt: s.created_at
+        id: s.session_id || s.id,
+        title: s.title || s.name || 'New Chat',
+        messages: normalizeMessages(s),
+        createdAt: s.created_at || s.createdAt || Date.now()
       }));
       
       console.log('[AUTO-TITLE] Fresh sessions from backend:', 
