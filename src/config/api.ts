@@ -1,24 +1,19 @@
-const DEFAULT_LAMBDA_URL =
-  "https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/";
-
-function resolveLambdaUrl(): string {
-  const envUrl = import.meta.env.VITE_LAMBDA_URL;
-  if (typeof envUrl === "string" && envUrl.trim().length > 0) {
-    return envUrl.trim();
+/**
+ * Resolve the Lambda Function URL with sensible fallbacks.
+ * Priority: localStorage override -> Vite env -> hardcoded default.
+ */
+export function getLambdaUrl(): string {
+  // Local override (useful for Amplify env vars or manual testing)
+  try {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("lambda_url") : null;
+    if (stored) return stored;
+  } catch {
+    // ignore storage errors
   }
 
-  if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage?.getItem("lambda_url");
-      if (stored && stored.trim().length > 0) {
-        return stored.trim();
-      }
-    } catch (error) {
-      console.warn("Unable to read lambda_url from localStorage", error);
-    }
-  }
+  const envUrl = import.meta.env?.VITE_LAMBDA_URL as string | undefined;
+  if (envUrl) return envUrl;
 
-  return DEFAULT_LAMBDA_URL;
+  // Legacy default
+  return "https://cdyibmzy64skc2ikp74qebsicq0nggic.lambda-url.us-east-1.on.aws/";
 }
-
-export const LAMBDA_URL = resolveLambdaUrl();

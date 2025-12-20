@@ -7,9 +7,8 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, createCheckoutSession, fetchProfile, saveAvatar, saveMode } from '@/lib/lambda';
-import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession } from '@/lib/lambda';
+import { getLambdaUrl } from '@/config/api';
 import { Calculator, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WorkspaceItem, loadWorkspaces, saveWorkspaces } from '@/lib/workspaces';
@@ -53,39 +52,7 @@ const Index = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRequestRef = useRef<{ sessionId: string; requestId: string } | null>(null);
 
-  const getIdentity = useCallback(() => {
-    const userId = user ? (user as any).sub || user.email : getOrCreateUserId();
-    const userRole: 'guest' | 'user' = user ? 'user' : 'guest';
-    return { userId, userRole };
-  }, [user]);
-
-  const getPlan = useCallback((): 'guest' | 'free' | 'student' | 'pro' => {
-    const status = (usage?.subscription_status || '').toLowerCase();
-    let plan = (usage?.plan || (user ? 'free' : 'guest')).toLowerCase();
-    if (plan === 'guest' && user) plan = 'free';
-    if (!['guest', 'free', 'student', 'pro'].includes(plan)) {
-      plan = user ? 'free' : 'guest';
-    }
-    if (!['pro', 'student'].includes(plan) && ['active', 'trialing', 'past_due'].includes(status)) {
-      plan = 'student';
-    }
-    return plan as 'guest' | 'free' | 'student' | 'pro';
-  }, [usage?.plan, usage?.subscription_status, user]);
-
-  const getModelAccess = useCallback((modelId: string): ModelAccessState => {
-    const plan = getPlan();
-    const model = MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
-    if (model.tier === 'pro') {
-      return { locked: plan !== 'pro', reason: plan === 'guest' ? 'login' : 'upgrade', tier: model.tier };
-    }
-    if (model.tier === 'student' && plan === 'guest') {
-      return { locked: true, reason: 'login', tier: model.tier };
-    }
-    return { locked: false, tier: model.tier };
-  }, [getPlan]);
-
-  const guestLimitReached = getPlan() === 'guest' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
-  const freeLimitReached = getPlan() === 'free' && usage?.limit !== null && (usage?.problems_left ?? 0) <= 0;
+  const lambdaUrl = getLambdaUrl();
 
   const refreshUsage = useCallback(async () => {
     try {
@@ -730,7 +697,7 @@ const Index = () => {
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(lambdaUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -772,7 +739,7 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await parseLambdaResponse(await fetch(LAMBDA_URL, {
+          await parseLambdaResponse(await fetch(lambdaUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -788,7 +755,7 @@ const Index = () => {
           }));
         } else {
           // Use the new classify action
-          const classifyResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
+          const classifyResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -818,7 +785,7 @@ const Index = () => {
             
             if (text.trim()) payload.text = text;
             
-            const graphResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
+            const graphResponse = await parseLambdaResponse(await fetch(lambdaUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -868,7 +835,7 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await parseLambdaResponse(await fetch(LAMBDA_URL, {
+            await parseLambdaResponse(await fetch(lambdaUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -886,7 +853,7 @@ const Index = () => {
         }
       } else {
         // Text only -> use solve action
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        await parseLambdaResponse(await fetch(lambdaUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { LAMBDA_URL } from "@/config/api";
+import { getLambdaUrl } from "@/config/api";
 
 // Get or create user ID from localStorage
 export function getOrCreateUserId(): string {
@@ -12,46 +11,12 @@ export function getOrCreateUserId(): string {
   return userId;
 }
 
-async function callLambda(body: any, userRole: "guest" | "user" = "guest") {
-  const payload = { ...body, user_role: userRole };
-
-  const doFetch = async (timeoutMs: number) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetch(LAMBDA_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  };
-
-  const timeouts = [12000, 18000];
-  let res: Response | null = null;
-  let lastError: Error | null = null;
-
-  for (const ms of timeouts) {
-    try {
-      res = await doFetch(ms);
-      break;
-    } catch (error: any) {
-      const isTimeout = error?.name === "AbortError";
-      const isNetwork = typeof error?.message === "string" && error.message.includes("Failed to fetch");
-      if (isTimeout || isNetwork) {
-        lastError = new Error("Request timed out. Please try again.");
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  if (!res) {
-    throw lastError || new Error("Request failed before receiving a response.");
-  }
+async function callLambda(body: any) {
+  const res = await fetch(getLambdaUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
   // Always try to read and return the JSON body, even on non-2xx
   let json: any = null;
