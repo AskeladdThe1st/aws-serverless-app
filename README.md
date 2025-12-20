@@ -1,73 +1,32 @@
-# Welcome to your Lovable project
+# Project Overview
+Math Tutor Agent is a React + Vite front-end hosted on AWS Amplify that talks to a Python Lambda API. The Lambda solves math problems (including image-based graph analysis), tracks usage/limits, and persists chats so users can return to past sessions.
 
-## Project info
+# Architecture Overview (AWS services used and why)
+- **AWS Amplify Hosting**: Serves the static React build and handles CI/CD for the UI.
+- **AWS Lambda (containerized, Python)**: Stateless compute for problem solving, graph analysis, and usage enforcement.
+- **Amazon DynamoDB**: `calculus_sessions` stores chat histories; `calculus_usage` tracks plan/usage limits.
+- **AWS Secrets Manager**: Stores OpenAI and Stripe secrets when not provided via env vars.
+- **Amazon S3** (optional): Stores uploaded avatar images when `PROFILE_BUCKET` is set.
+- **Amazon ECR**: Hosts the Lambda container image produced by CI.
+- **Stripe**: Billing for student/pro plans (price IDs supplied via env vars).
+- **CloudWatch Logs**: Observability for Lambda runs and deployment diagnostics.
 
-**URL**: https://lovable.dev/projects/95ff72ac-4838-479b-bf2c-ab5f0bb16e6b
+# Deployment Flow
+1. Push to `main` triggers `.github/workflows/backend-lambda-ecr.yml`.
+2. The workflow assumes the deploy role (`AWS_DEPLOY_ROLE_ARN`), builds the `backend/` Docker image with `GIT_SHA`/`BUILD_TIME` build args, pushes to ECR (`ECR_REPOSITORY`), and runs `aws lambda update-function-code` for `LAMBDA_FUNCTION_NAME`.
+3. Amplify builds and deploys the React front-end from `main`, pointing to the Lambda Function URL (`LAMBDA_URL` in the UI code).
+4. Required GitHub configuration: repository variables `AWS_REGION`, `ECR_REPOSITORY`, `LAMBDA_FUNCTION_NAME`; secret `AWS_DEPLOY_ROLE_ARN`.
 
-## How can I edit this code?
+# Security Considerations (IAM roles, least privilege, auth)
+- **Deploy role (GitHub OIDC)**: Limit trust to this repo/branch; permissions only for ECR push and Lambda `UpdateFunctionCode`.
+- **Lambda execution role**: Grant least-privilege access to DynamoDB tables (`calculus_sessions`, `calculus_usage`), Secrets Manager entries for OpenAI/Stripe/webhook, and S3 avatar bucket (if enabled).
+- **Auth**: Front-end uses AWS Amplify Auth; backend enforces plan/model access and per-user limits.
+- **Secrets**: Prefer Secrets Manager (`OPENAI_SECRET_NAME`, `STRIPE_SECRET_NAME`, `STRIPE_WEBHOOK_SECRET_NAME`) over inline env vars.
 
-There are several ways of editing your application.
+# Monitoring & Stability (CloudWatch)
+- CloudWatch Logs capture Lambda request/response traces, configuration diagnostics (`status`/`health` action), and deployment metadata from `GIT_SHA`/`BUILD_TIME`.
+- Watch for DynamoDB throttling, Secrets Manager access errors, and Stripe failures; alerts should be tied to Lambda error metrics.
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/95ff72ac-4838-479b-bf2c-ab5f0bb16e6b) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/95ff72ac-4838-479b-bf2c-ab5f0bb16e6b) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+# Incident & Recovery Summary
+- **Recent rollback**: Production briefly served stale chat state after a deployment; resolving by redeploying the last known-good Lambda image restored persistence. Amplify/UI remained stable.
+- **Current posture**: CI-driven Lambda image updates and Amplify hosting are healthy; manual run of the deploy workflow can re-pin a known-good image if needed. 

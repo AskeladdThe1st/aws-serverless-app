@@ -242,13 +242,13 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
                           {!isCollapsed && (
                             <>
-                              <span className="flex-1 text-sm text-foreground truncate min-w-0 group-hover:text-foreground">
+                              <span className="flex-1 pr-8 text-sm text-foreground truncate min-w-0 group-hover:text-foreground">
                                 {chat.title}
                               </span>
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
-                                className="flex-shrink-0 p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 hover:bg-muted"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 hover:bg-muted"
                                 aria-label="Delete chat"
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
