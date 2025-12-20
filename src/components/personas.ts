@@ -36,7 +36,7 @@ export const PERSONA_OPTIONS: PersonaOption[] = [
     id: 'classic',
     name: 'Classic Tutor',
     description: 'Concise, verified, and methodical solutions.',
-    detail: 'Matches the standard CalculusGPT tone with SymPy checks.',
+    detail: 'Matches the standard Math Tutor Agent tone with SymPy checks.',
     tier: 'guest',
     avatar: createAvatarDataUri('#0ea5e9', '#6366f1', 'CT'),
   },

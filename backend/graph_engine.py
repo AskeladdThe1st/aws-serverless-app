@@ -1,6 +1,6 @@
 # graph_engine.py
 """
-Redundant Multi-Pass Graph Feature Extraction Engine for CalculusGPT
+Redundant Multi-Pass Graph Feature Extraction Engine for Math Tutor Agent
 (Secrets Manager Version)
 """
 from __future__ import annotations
