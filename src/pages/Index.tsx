@@ -192,6 +192,7 @@ const Index = () => {
     const draftId = crypto.randomUUID();
     setPendingSessionId(draftId);
     setActiveChatId(draftId);
+    localStorage.setItem('cgpt_session_id', draftId);
     setInputValue('');
     activeRequestRef.current = null;
     setIsLoading(false);
@@ -583,10 +584,18 @@ const Index = () => {
     if ((!text.trim() && !images?.length) || isLoading) return;
 
     const { userId, userRole } = getIdentity();
-    let sessionId = localStorage.getItem('cgpt_session_id') || activeChatId;
+    // Prefer the in-memory draft/active chat, fall back to stored session.
+    let sessionId = pendingSessionId || activeChatId || localStorage.getItem('cgpt_session_id');
     if (!userId) return;
 
     const personaId = profile.persona || DEFAULT_PERSONA_ID;
+    const previousAssistantCount = (chatSessions.find(c => c.id === sessionId)?.messages || [])
+      .filter(m => m.role === 'assistant').length;
+
+    // Capture backend payloads so we can render assistant replies immediately
+    // even if DynamoDB write propagation lags or fails.
+    let immediateResponse: any = null;
+    let immediateAction: 'solve' | 'graph' | 'clarify' | null = null;
 
     if (!sessionId) {
       const generatedId = crypto.randomUUID();
@@ -657,20 +666,32 @@ const Index = () => {
       content: text || 'Analyzing images...',
       imageUrls: images?.length ? images.map(img => URL.createObjectURL(img)) : undefined,
     };
-    setChatSessions(prev =>
-      prev.map(chat =>
-        chat.id === sessionId
-          ? { ...chat, messages: [...chat.messages, userMessage] }
-          : chat
-      )
-    );
+    setChatSessions(prev => {
+      const existing = prev.find(chat => chat.id === sessionId);
+      if (existing) {
+        return prev.map(chat =>
+          chat.id === sessionId
+            ? { ...chat, messages: [...chat.messages, userMessage] }
+            : chat
+        );
+      }
+      return [
+        {
+          id: sessionId,
+          title: 'New Chat',
+          messages: [userMessage],
+          createdAt: Date.now(),
+        },
+        ...prev,
+      ];
+    });
 
     setIsLoading(true);
 
     try {
       // Handle clarification response
       if (isRespondingToClarification && currentChat?.clarificationImages?.length) {
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        immediateResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -685,6 +706,7 @@ const Index = () => {
             images: currentChat.clarificationImages,
           }),
         }));
+        immediateAction = 'clarify';
         
         // Clear clarification state
         setChatSessions(prev =>
@@ -713,7 +735,7 @@ const Index = () => {
         
         // If derivative keywords present, always route to solve
         if (hasDerivativeKeyword) {
-          await parseLambdaResponse(await fetch(LAMBDA_URL, {
+          immediateResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -728,6 +750,7 @@ const Index = () => {
               images: imagesBase64,
             }),
           }));
+          immediateAction = 'solve';
         } else {
           // Use the new classify action
           const classifyResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
@@ -767,6 +790,8 @@ const Index = () => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             }));
+            immediateResponse = graphResponse;
+            immediateAction = 'graph';
             
             console.log('[GRAPH RESPONSE]', {
               needs_clarification: graphResponse?.needs_clarification,
@@ -812,7 +837,7 @@ const Index = () => {
             }
           } else {
             // Not a graph -> send solve action with all images
-            await parseLambdaResponse(await fetch(LAMBDA_URL, {
+            immediateResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -827,11 +852,12 @@ const Index = () => {
                 images: imagesBase64,
               }),
             }));
+            immediateAction = 'solve';
           }
         }
       } else {
         // Text only -> use solve action
-        await parseLambdaResponse(await fetch(LAMBDA_URL, {
+        immediateResponse = await parseLambdaResponse(await fetch(LAMBDA_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -845,6 +871,7 @@ const Index = () => {
             text: text,
           }),
         }));
+        immediateAction = 'solve';
       }
 
       // CRITICAL: Check if still on the same chat after backend call
@@ -858,6 +885,12 @@ const Index = () => {
       const chatData = await loadChat(sessionId, userId, userRole);
       const normalizedChatMessages = normalizeMessages(chatData);
       chatData.messages = normalizedChatMessages;
+
+      // If the backend hasn't persisted the user turn yet, keep the optimistic local copy
+      if (!chatData.messages?.length) {
+        const localMessages = chatSessions.find(c => c.id === sessionId)?.messages || [];
+        chatData.messages = localMessages.length ? localMessages : [userMessage];
+      }
       
       // CRITICAL: Check again after loadChat
       if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -919,6 +952,39 @@ const Index = () => {
           
           return msg;
         });
+
+        // If Dynamo didn't persist the assistant reply yet, synthesize it from the
+        // immediate Lambda response so the UI always shows a reply.
+        const assistantCount = chatData.messages.filter((m: Message) => m.role === 'assistant').length;
+        if (assistantCount <= previousAssistantCount && immediateResponse) {
+          const synthesized: Message = {
+            role: 'assistant',
+            content: '',
+          };
+
+          if (immediateAction === 'solve') {
+            synthesized.content = immediateResponse.steps || immediateResponse.result || 'Solution ready.';
+            synthesized.steps = immediateResponse.steps;
+            synthesized.result = immediateResponse.result;
+            synthesized.expression = immediateResponse.expression;
+          } else if (immediateAction === 'graph' || immediateAction === 'clarify') {
+            if (immediateResponse.needs_clarification && immediateResponse.question) {
+              synthesized.content = immediateResponse.question;
+            } else {
+              synthesized.content = immediateResponse.analysis || 'Graph analyzed.';
+            }
+            if (immediateResponse.image_preview) {
+              synthesized.image_preview = immediateResponse.image_preview;
+              synthesized.imageUrls = [`data:image/png;base64,${immediateResponse.image_preview}`];
+            }
+          }
+
+          if (!synthesized.content) {
+            synthesized.content = 'Answer ready.';
+          }
+
+          chatData.messages = [...chatData.messages, synthesized];
+        }
       }
 
       // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
