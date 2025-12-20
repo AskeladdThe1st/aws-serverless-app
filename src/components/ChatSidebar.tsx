@@ -223,7 +223,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent overflow-hidden",
+                            "group relative w-full min-w-0 flex items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent overflow-hidden",
                             "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2 pr-10"
