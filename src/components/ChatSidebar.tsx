@@ -256,8 +256,9 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                                   "absolute right-2 top-1/2 -translate-y-1/2 z-10", // overlay on the right
                                   "h-7 w-7 grid place-items-center rounded-md",
                                   "bg-background/80 border border-border/60 backdrop-blur-sm shadow-sm",
-                                  "opacity-80 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
+                                  "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
                                   "transition-opacity",
+                                  "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
                                   "hover:bg-muted focus-visible:bg-muted",
                                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                                 )}
