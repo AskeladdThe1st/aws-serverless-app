@@ -444,7 +444,8 @@ const Index = () => {
       'after', 'before', 'up', 'down', 'out', 'so', 'if', 'then', 'than', 'too', 'very', 'can', 'could', 'should', 'would'
     ]);
 
-    const MAX_TITLE_LENGTH = 36;
+    const MAX_WORDS = 6;
+    const MAX_CHARS = 48;
     const words = trimmed
       .replace(/[^\w\s'-]/g, ' ')
       .split(/\s+/)
@@ -454,16 +455,30 @@ const Index = () => {
       .map(word => word.replace(/^['-]+|['-]+$/g, ''))
       .filter(word => word.length > 2 && !STOP_WORDS.has(word.toLowerCase()));
 
-    const selectedWords = (keywordCandidates.length ? keywordCandidates : words).slice(0, 6);
+    const pool = keywordCandidates.length ? keywordCandidates : words;
+    const selectedWords = pool.slice(0, MAX_WORDS);
+
     let title = selectedWords
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    if (title.length > MAX_TITLE_LENGTH) {
-      title = title.slice(0, MAX_TITLE_LENGTH - 3).trimEnd() + '...';
+    if (!title) {
+      return 'New Chat';
     }
 
-    return title || 'New Chat';
+    let wasTruncated = pool.length > selectedWords.length;
+    if (title.length > MAX_CHARS) {
+      title = title.slice(0, MAX_CHARS - 1).trimEnd();
+      wasTruncated = true;
+    }
+
+    if (wasTruncated) {
+      title = `${title}…`;
+    }
+
+    return title;
   };
 
   const handleToolSelect = (text: string) => {
