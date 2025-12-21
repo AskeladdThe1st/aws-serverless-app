@@ -90,10 +90,6 @@ export const UserAvatar = ({ isCollapsed = false }: UserAvatarProps) => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 bg-popover border-border">
-        <DropdownMenuItem className="cursor-pointer text-foreground hover:bg-bg-hover">
-          <Crown className="mr-2 h-4 w-4" />
-          Upgrade Plan
-        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={handleLogout}
           className="cursor-pointer text-foreground hover:bg-bg-hover"
