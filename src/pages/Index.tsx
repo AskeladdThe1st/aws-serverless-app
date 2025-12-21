@@ -427,31 +427,77 @@ const Index = () => {
     }
   };
 
-  const generateChatTitle = (text: string, hasImage: boolean): string => {
+  const generateChatTitle = (messages: Message[], fallbackText: string, hasImage: boolean): string => {
     if (hasImage) {
       return 'Graph Analysis';
     }
-    
-    if (!text.trim()) {
+
+    const MAX_WORDS = 6;
+    const MAX_CHARS = 48;
+
+    const STOP_WORDS = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'with', 'on', 'in', 'at', 'to', 'from', 'by', 'of', 'about', 'as',
+      'is', 'are', 'was', 'were', 'be', 'being', 'been', 'that', 'this', 'these', 'those', 'it', 'its', 'into', 'over', 'under',
+      'after', 'before', 'up', 'down', 'out', 'so', 'if', 'then', 'than', 'too', 'very', 'can', 'could', 'should', 'would'
+    ]);
+
+    const firstUser = messages.find(m => m.role === 'user' && m.content?.trim());
+    const firstAssistant = messages.find(m => m.role === 'assistant' && m.content?.trim());
+
+    const sourceSegments = [
+      firstUser?.content || '',
+      firstAssistant?.content || '',
+      fallbackText || ''
+    ]
+      .map((s) => s?.toString().trim() || '')
+      .filter(Boolean);
+
+    if (sourceSegments.length === 0) {
       return 'New Chat';
     }
-    
-    // Take first 6-10 words
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    const titleWords = words.slice(0, Math.min(10, words.length));
-    let title = titleWords.join(' ');
-    
-    // Capitalize first letter
-    if (title.length > 0) {
-      title = title.charAt(0).toUpperCase() + title.slice(1);
+
+    const sourceText = sourceSegments.join(' ').slice(0, 400);
+
+    // Extract keywords in order of appearance, skipping stop words and very short tokens.
+    const words = sourceText
+      .replace(/[^\w\s'-]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => word.replace(/^['-]+|['-]+$/g, ''));
+
+    const seen = new Set<string>();
+    const keywords: string[] = [];
+    for (const raw of words) {
+      const lower = raw.toLowerCase();
+      if (lower.length < 3 || STOP_WORDS.has(lower)) continue;
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      keywords.push(raw);
+      if (keywords.length >= MAX_WORDS) break;
     }
-    
-    // Truncate if too long
-    if (title.length > 60) {
-      title = title.substring(0, 57) + '...';
+
+    const pool = keywords.length ? keywords : words.slice(0, MAX_WORDS);
+    let title = pool
+      .slice(0, MAX_WORDS)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!title) {
+      return 'New Chat';
     }
-    
-    return title || 'New Chat';
+
+    const wasTruncated = title.length > MAX_CHARS || pool.length > MAX_WORDS;
+    if (title.length > MAX_CHARS) {
+      title = title.slice(0, MAX_CHARS).trimEnd();
+    }
+
+    if (wasTruncated) {
+      title = `${title}…`;
+    }
+
+    return title;
   };
 
   const handleToolSelect = (text: string) => {
@@ -1009,25 +1055,25 @@ const Index = () => {
         shouldUpdateTitle = true;
         
         // Determine text to use for title generation
-        let titleText = originalText;
-        
-        // If no text was provided, find first user message in loaded data
-        if (!titleText || !titleText.trim()) {
-          const firstUserMsg = chatData.messages?.find((m: Message) => m.role === 'user' && m.content?.trim());
-          titleText = firstUserMsg?.content || '';
-        }
-        
+        const firstMessages = chatData.messages?.slice(0, 4) || [];
+        const firstUserMsg = firstMessages.find((m: Message) => m.role === 'user' && m.content?.trim());
+        const firstAssistantMsg = firstMessages.find((m: Message) => m.role === 'assistant' && m.content?.trim());
+
+        const combinedContext = [
+          firstUserMsg?.content || '',
+          firstAssistantMsg?.content || '',
+          originalText || ''
+        ].find((txt) => !!txt?.trim()) || '';
+
         console.log('[AUTO-TITLE] Will generate title from:', { 
-          titleText: titleText?.substring(0, 50), 
+          firstUser: firstUserMsg?.content?.substring(0, 80), 
+          firstAssistant: firstAssistantMsg?.content?.substring(0, 80),
+          fallback: combinedContext.substring(0, 80),
           hasImage 
         });
         
-        // Generate title
-        if (hasImage && (!titleText || !titleText.trim())) {
-          autoTitle = 'Graph Analysis';
-        } else {
-          autoTitle = generateChatTitle(titleText, hasImage);
-        }
+        // Generate title from early conversation context
+        autoTitle = generateChatTitle(firstMessages, combinedContext, hasImage);
         
         console.log('[AUTO-TITLE] Generated title:', autoTitle);
       }
