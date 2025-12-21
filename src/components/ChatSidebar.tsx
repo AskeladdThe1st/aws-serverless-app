@@ -223,8 +223,8 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex w-full max-w-full min-w-0 items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent overflow-hidden", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
-                            "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                            "group relative flex w-full max-w-full min-w-0 items-center gap-2 rounded-lg cursor-pointer transition-all border overflow-hidden", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
+                            "bg-transparent border-transparent hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
                           )}
@@ -255,10 +255,10 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                                 className={cn(
                                   "absolute right-2 top-1/2 -translate-y-1/2 z-10", // overlay on the right
                                   "h-7 w-7 grid place-items-center rounded-md",
-                                  "bg-background/80 border border-border/60 backdrop-blur-sm shadow-sm",
-                                  "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
+                                  "bg-background/90 border border-border/60 shadow-sm",
+                                  "opacity-90 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
                                   "transition-opacity",
-                                  "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
+                                  "pointer-events-auto",
                                   "hover:bg-muted focus-visible:bg-muted",
                                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                                 )}
