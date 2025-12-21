@@ -242,12 +242,12 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
 
                           {!isCollapsed && (
                             <div className="relative flex flex-1 min-w-0 items-center overflow-hidden rounded-full px-2 py-1 group-hover:bg-sidebar-hover group-focus-within:bg-sidebar-hover transition-colors"> {/* relative: anchor for overlay delete button */}
-                              <span className="block flex-1 min-w-0 truncate pr-14 text-sm text-foreground">
+                              <span className="block flex-1 min-w-0 truncate pr-16 group-hover:pr-20 transition-all text-sm text-foreground">
                                 {chat.title}
                               </span>
                               <div
                                 aria-hidden
-                                className="pointer-events-none absolute inset-y-1 right-11 w-10 bg-gradient-to-l from-sidebar-bg via-sidebar-bg/70 to-transparent group-hover:from-sidebar-hover group-hover:via-sidebar-hover/70"
+                                className="pointer-events-none absolute inset-y-1 right-12 w-12 bg-gradient-to-l from-sidebar-bg via-sidebar-bg/70 to-transparent group-hover:from-sidebar-hover group-hover:via-sidebar-hover/70"
                               />
 
                               <button
