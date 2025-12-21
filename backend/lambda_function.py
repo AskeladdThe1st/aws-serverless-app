@@ -179,6 +179,33 @@ def _clean_title_text(text: str) -> str:
     return cleaned
 
 
+def _finalize_title(candidate: str | None) -> tuple[str, bool]:
+    trimmed, truncated = _truncate_title(candidate or "")
+    return (trimmed or "New Chat"), truncated
+
+
+def _title_needs_regeneration(title: str | None) -> bool:
+    cleaned = _clean_title_text(title or "")
+    if not cleaned or cleaned.lower() == "new chat":
+        return True
+    words = [w for w in cleaned.split(" ") if w]
+    return len(words) > TITLE_MAX_WORDS or len(cleaned) > TITLE_MAX_CHARS
+
+
+def _extract_first_turn(session: dict) -> tuple[str | None, str | None]:
+    history = session.get("messages") or []
+    first_user = next((m.get("content") for m in history if m.get("role") == "user" and m.get("content")), None)
+    first_assistant = next((m.get("content") for m in history if m.get("role") == "assistant" and m.get("content")), None)
+    return first_user, first_assistant
+
+
+def _enforce_title_limit(user_id: str, session_id: str, title: str | None) -> str:
+    final_title, _ = _finalize_title(title)
+    if final_title != (title or "New Chat"):
+        update_title(user_id, session_id, final_title)
+    return final_title
+
+
 def _truncate_title(title: str) -> tuple[str | None, bool]:
     """
     Enforce length constraints:
@@ -274,42 +301,43 @@ async def _openai_title(user_text: str, assistant_text: str | None = None) -> st
 def auto_title_session(user_id: str, session: dict, session_id: str, user_text: str, assistant_text: str | None):
     """
     Auto-generate a concise title from the earliest conversation context.
-    - Only runs when the session title is still unset or 'New Chat'
+    - Runs when the session title is unset, placeholder, or exceeds limits
     - Prefers OpenAI summarization; falls back to keyword extraction
+    Returns the finalized title if one was saved.
     """
     try:
         if not user_id or not session_id or not session:
-            return
-        if session.get("title") not in {None, "", "New Chat"}:
-            return
+            return None
 
-        history = session.get("messages") or []
-        first_user = next((m.get("content") for m in history if m.get("role") == "user" and m.get("content")), None)
-        first_assistant = next((m.get("content") for m in history if m.get("role") == "assistant" and m.get("content")), None)
+        current_title = session.get("title")
+        needs_regen = _title_needs_regeneration(current_title)
 
-        # Prefer the earliest meaningful user text; skip placeholder image prompts.
-        candidate_user = _clean_title_text(first_user or user_text or "")
+        history_user, history_assistant = _extract_first_turn(session)
+
+        candidate_user = _clean_title_text(history_user or user_text or "")
         if candidate_user.lower().startswith(DEFAULT_IMAGE_PROMPT.lower()):
             candidate_user = ""
 
-        if not candidate_user:
-            return
+        candidate_assistant = history_assistant or assistant_text
 
-        # OpenAI-powered summary first
-        generated = asyncio.run(_openai_title(candidate_user, first_assistant or assistant_text))
-        title = generated or _keyword_fallback_title(candidate_user)
+        generated = None
+        if needs_regen and candidate_user:
+            generated = asyncio.run(_openai_title(candidate_user, candidate_assistant)) or _keyword_fallback_title(candidate_user)
 
-        if not title:
-            return
+        base_candidate = generated or current_title or candidate_user
+        final_title, truncated = _finalize_title(base_candidate)
 
-        # Final enforcement of limits/ellipsis
-        final_title, _ = _truncate_title(title)
-        if not final_title:
-            return
+        if final_title == "New Chat" and candidate_user:
+            fallback_final, _ = _finalize_title(_keyword_fallback_title(candidate_user))
+            final_title = fallback_final or final_title
 
-        update_title(user_id, session_id, final_title)
+        if needs_regen or truncated or final_title != (current_title or ""):
+            update_title(user_id, session_id, final_title)
+        session["title"] = final_title
+        return final_title
     except Exception as exc:
         print(f"[AUTO-TITLE] failed: {exc}")
+        return None
 
 
 # ----------------- SymPy Execution helpers -----------------
@@ -675,11 +703,12 @@ def enforce_model_access(user_id: str, user_role: str, requested_model: str | No
     return check_model_entitlement(user_id, user_role, requested_model)
 
 def create_session(user_id, session_id, title="New Chat", manual_mode=False):
+    final_title, _ = _finalize_title(title)
     try:
         item = {
             "user_id": user_id,
             "session_id": session_id,
-            "title": title,
+            "title": final_title,
             "manual_mode": bool(manual_mode),
             "messages": [],
             "createdAt": int(time.time()),
@@ -696,7 +725,10 @@ def create_session(user_id, session_id, title="New Chat", manual_mode=False):
 def get_session(user_id, session_id):
     try:
         resp = sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
-        return resp.get("Item")
+        session = resp.get("Item")
+        if session and _title_needs_regeneration(session.get("title")):
+            session["title"] = _enforce_title_limit(user_id, session_id, session.get("title"))
+        return session
     except ClientError as e:
         raise RuntimeError(
             f"DynamoDB get_session failed: {e.response.get('Error', {}).get('Message', str(e))}"
@@ -710,7 +742,11 @@ def list_sessions(user_id):
         resp = sessions_table.query(
             KeyConditionExpression=Key("user_id").eq(user_id)
         )
-        return resp.get("Items", [])
+        items = resp.get("Items", [])
+        for item in items:
+            if _title_needs_regeneration(item.get("title")):
+                item["title"] = _enforce_title_limit(user_id, item.get("session_id"), item.get("title"))
+        return items
     except ClientError as e:
         raise RuntimeError(
             f"DynamoDB list_sessions failed: {e.response.get('Error', {}).get('Message', str(e))}"
@@ -749,11 +785,12 @@ def delete_session(user_id, session_id):
 
 def update_title(user_id, session_id, title):
     now = int(time.time())
+    final_title, _ = _finalize_title(title)
     try:
         sessions_table.update_item(
             Key={"user_id": user_id, "session_id": session_id},
             UpdateExpression="SET title = :title, updatedAt = :t",
-            ExpressionAttributeValues={":title": title, ":t": now},
+            ExpressionAttributeValues={":title": final_title, ":t": now},
         )
         return {"updated": True}
     except ClientError as e:
@@ -780,8 +817,13 @@ def update_session(user_id, session_id, fields: dict):
     set_parts = []
     eav = {":t": now}
     for k, v in fields.items():
-        set_parts.append(f"{k} = :{k}")
-        eav[f":{k}"] = v
+        if k == "title":
+            normalized, _ = _finalize_title(v)
+            set_parts.append(f"{k} = :{k}")
+            eav[f":{k}"] = normalized
+        else:
+            set_parts.append(f"{k} = :{k}")
+            eav[f":{k}"] = v
     set_parts.append("updatedAt = :t")
     update_expr = "SET " + ", ".join(set_parts)
     try:
