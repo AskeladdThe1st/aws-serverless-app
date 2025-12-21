@@ -1132,6 +1132,13 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
+                auto_title_session(
+                    user_id,
+                    session,
+                    session_id,
+                    text or "[Image Uploaded]",
+                    payload.get("question") or payload.get("analysis"),
+                )
             usage_info = increment_usage(user_id, user_role)
             payload["usage"] = usage_info
             return respond(200, clean_decimals(payload))
@@ -1157,6 +1164,13 @@ def lambda_handler(event, context):
                     append_message(user_id, session_id, "assistant", payload.get("question", ""))
                 elif payload.get("analysis_complete"):
                     append_message(user_id, session_id, "assistant", payload.get("analysis", ""))
+                auto_title_session(
+                    user_id,
+                    session,
+                    session_id,
+                    text or "[Graph Clarification]",
+                    payload.get("question") or payload.get("analysis"),
+                )
             return respond(200, clean_decimals(payload))
 
         # SOLVE (unchanged structure, now multi-image)
