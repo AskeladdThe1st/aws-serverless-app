@@ -223,10 +223,10 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex w-full max-w-full min-w-0 items-center gap-2 rounded-full cursor-pointer transition-all border", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
+                            "group flex w-full max-w-full min-w-0 items-center gap-2 rounded-full cursor-pointer transition-all border", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
                             "bg-transparent border-transparent hover:bg-sidebar-hover/90 hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
-                            isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
+                            isCollapsed ? "px-2 py-2.5 justify-center" : "px-2.5 py-2"
                           )}
                           tabIndex={0}
                           role="button"
@@ -241,11 +241,11 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
 
                           {!isCollapsed && (
-                            <div className="flex flex-1 min-w-0 items-center gap-2 rounded-full px-3 py-1 group-hover:bg-sidebar-hover group-focus-within:bg-sidebar-hover transition-colors">
+                            <div className="flex flex-1 min-w-0 items-center gap-2 rounded-full px-2.5 py-1 group-hover:bg-sidebar-hover group-focus-within:bg-sidebar-hover transition-colors">
                               <span className="block flex-1 min-w-0 truncate text-sm text-foreground">
                                 {chat.title}
                               </span>
-                              <div className="flex-shrink-0 pr-1">
+                              <div className="flex-shrink-0 w-10 h-8 flex items-center justify-end pr-1">
                                 <button
                                   onClick={(e) => handleDeleteClick(e, chat.id)}
                                   className={cn(
