@@ -431,27 +431,54 @@ const Index = () => {
     if (hasImage) {
       return 'Graph Analysis';
     }
-    
-    if (!text.trim()) {
+
+    const trimmed = text.trim();
+    if (!trimmed) {
       return 'New Chat';
     }
-    
-    // Take first 6-10 words
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    const titleWords = words.slice(0, Math.min(10, words.length));
-    let title = titleWords.join(' ');
-    
-    // Capitalize first letter
-    if (title.length > 0) {
-      title = title.charAt(0).toUpperCase() + title.slice(1);
+
+    // Prefer short, keyword-focused titles to avoid sidebar overflow.
+    const STOP_WORDS = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'with', 'on', 'in', 'at', 'to', 'from', 'by', 'of', 'about', 'as',
+      'is', 'are', 'was', 'were', 'be', 'being', 'been', 'that', 'this', 'these', 'those', 'it', 'its', 'into', 'over', 'under',
+      'after', 'before', 'up', 'down', 'out', 'so', 'if', 'then', 'than', 'too', 'very', 'can', 'could', 'should', 'would'
+    ]);
+
+    const MAX_WORDS = 6;
+    const MAX_CHARS = 48;
+    const words = trimmed
+      .replace(/[^\w\s'-]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const keywordCandidates = words
+      .map(word => word.replace(/^['-]+|['-]+$/g, ''))
+      .filter(word => word.length > 2 && !STOP_WORDS.has(word.toLowerCase()));
+
+    const pool = keywordCandidates.length ? keywordCandidates : words;
+    const selectedWords = pool.slice(0, MAX_WORDS);
+
+    let title = selectedWords
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!title) {
+      return 'New Chat';
     }
-    
-    // Truncate if too long
-    if (title.length > 60) {
-      title = title.substring(0, 57) + '...';
+
+    let wasTruncated = pool.length > selectedWords.length;
+    if (title.length > MAX_CHARS) {
+      title = title.slice(0, MAX_CHARS - 1).trimEnd();
+      wasTruncated = true;
     }
-    
-    return title || 'New Chat';
+
+    if (wasTruncated) {
+      title = `${title}…`;
+    }
+
+    return title;
   };
 
   const handleToolSelect = (text: string) => {
