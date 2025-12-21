@@ -7,7 +7,7 @@ import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
 import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/components/personas';
 import { ModeStatus } from '@/components/ModeStatus';
@@ -427,33 +427,6 @@ const Index = () => {
     }
   };
 
-  const generateChatTitle = (text: string, hasImage: boolean): string => {
-    if (hasImage) {
-      return 'Graph Analysis';
-    }
-    
-    if (!text.trim()) {
-      return 'New Chat';
-    }
-    
-    // Take first 6-10 words
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    const titleWords = words.slice(0, Math.min(10, words.length));
-    let title = titleWords.join(' ');
-    
-    // Capitalize first letter
-    if (title.length > 0) {
-      title = title.charAt(0).toUpperCase() + title.slice(1);
-    }
-    
-    // Truncate if too long
-    if (title.length > 60) {
-      title = title.substring(0, 57) + '...';
-    }
-    
-    return title || 'New Chat';
-  };
-
   const handleToolSelect = (text: string) => {
     setInputValue(text);
   };
@@ -652,10 +625,6 @@ const Index = () => {
     // Generate unique request ID for tracking
     const requestId = crypto.randomUUID();
     activeRequestRef.current = { sessionId, requestId };
-
-    // Store original text for title generation later
-    const originalText = text;
-    const hasImage = !!images?.length;
 
     // Check if we're responding to a clarification request
     const currentChat = chatSessions.find(c => c.id === sessionId);
@@ -988,76 +957,15 @@ const Index = () => {
         }
       }
 
-      // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
-      console.log('[AUTO-TITLE] Loaded chat data:', { 
-        sessionId, 
-        currentTitle: chatData.title,
-        hasMessages: !!chatData.messages?.length 
-      });
-      
-      let shouldUpdateTitle = false;
-      let autoTitle = '';
-      
-      // Check loaded chat data and local state for "New Chat" title
-      const localChat = chatSessions.find((c) => c.id === sessionId);
-      const isNewChatTitle =
-        chatData.title === 'New Chat' ||
-        localChat?.title === 'New Chat' ||
-        !chatData.title;
-      
-      if (isNewChatTitle) {
-        shouldUpdateTitle = true;
-        
-        // Determine text to use for title generation
-        let titleText = originalText;
-        
-        // If no text was provided, find first user message in loaded data
-        if (!titleText || !titleText.trim()) {
-          const firstUserMsg = chatData.messages?.find((m: Message) => m.role === 'user' && m.content?.trim());
-          titleText = firstUserMsg?.content || '';
-        }
-        
-        console.log('[AUTO-TITLE] Will generate title from:', { 
-          titleText: titleText?.substring(0, 50), 
-          hasImage 
-        });
-        
-        // Generate title
-        if (hasImage && (!titleText || !titleText.trim())) {
-          autoTitle = 'Graph Analysis';
-        } else {
-          autoTitle = generateChatTitle(titleText, hasImage);
-        }
-        
-        console.log('[AUTO-TITLE] Generated title:', autoTitle);
-      }
-
-      // Persist auto-generated title to backend when needed
-      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        await updateChatTitle(sessionId, userId, autoTitle, userRole);
-      }
-
-      // Refresh sidebar to show updated title and all sessions
-      console.log('[AUTO-TITLE] Fetching fresh chat list...');
+      // Refresh sidebar to show updated title and all sessions (backend now auto-renames)
       const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-      let formattedSessions: ChatSession[] = rawSessions.map(s => ({
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id || s.id,
         title: s.title || s.name || 'New Chat',
         messages: normalizeMessages(s),
         createdAt: s.created_at || s.createdAt || Date.now()
       }));
-      
-      console.log('[AUTO-TITLE] Fresh sessions from backend:', 
-        formattedSessions.map(s => ({ id: s.id, title: s.title }))
-      );
-      
-      // If backend list has not yet propagated the new title, force it locally
-      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        formattedSessions = formattedSessions.map(chat =>
-          chat.id === sessionId ? { ...chat, title: autoTitle } : chat
-        );
-      }
       
       // CRITICAL: Final check before updating state
       if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -1072,8 +980,6 @@ const Index = () => {
           ? { ...chat, messages: chatData.messages || [] }
           : chat
       ));
-      
-      console.log('[AUTO-TITLE] State updated with new title');
     } catch (error: any) {
       console.error('Error processing request:', error);
 
