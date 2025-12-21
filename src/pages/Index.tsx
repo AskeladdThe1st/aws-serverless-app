@@ -7,7 +7,7 @@ import { PricingModal } from '@/components/PricingModal';
 import { LoginModal } from '@/components/LoginModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, updateChatTitle, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
+import { fileToBase64, createChat, listChats, loadChat, deleteChat as deleteSessionChat, getOrCreateUserId, fetchUsage, createCheckoutSession, getProfile, updateProfile } from '@/lib/lambda';
 import { MODEL_OPTIONS, ModelAccessState } from '@/components/ModelSelector';
 import { DEFAULT_PERSONA_ID, PERSONA_OPTIONS, PRESET_AVATARS } from '@/components/personas';
 import { ModeStatus } from '@/components/ModeStatus';
@@ -427,79 +427,6 @@ const Index = () => {
     }
   };
 
-  const generateChatTitle = (messages: Message[], fallbackText: string, hasImage: boolean): string => {
-    if (hasImage) {
-      return 'Graph Analysis';
-    }
-
-    const MAX_WORDS = 6;
-    const MAX_CHARS = 48;
-
-    const STOP_WORDS = new Set([
-      'the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'with', 'on', 'in', 'at', 'to', 'from', 'by', 'of', 'about', 'as',
-      'is', 'are', 'was', 'were', 'be', 'being', 'been', 'that', 'this', 'these', 'those', 'it', 'its', 'into', 'over', 'under',
-      'after', 'before', 'up', 'down', 'out', 'so', 'if', 'then', 'than', 'too', 'very', 'can', 'could', 'should', 'would'
-    ]);
-
-    const firstUser = messages.find(m => m.role === 'user' && m.content?.trim());
-    const firstAssistant = messages.find(m => m.role === 'assistant' && m.content?.trim());
-
-    const sourceSegments = [
-      firstUser?.content || '',
-      firstAssistant?.content || '',
-      fallbackText || ''
-    ]
-      .map((s) => s?.toString().trim() || '')
-      .filter(Boolean);
-
-    if (sourceSegments.length === 0) {
-      return 'New Chat';
-    }
-
-    const sourceText = sourceSegments.join(' ').slice(0, 400);
-
-    // Extract keywords in order of appearance, skipping stop words and very short tokens.
-    const words = sourceText
-      .replace(/[^\w\s'-]/g, ' ')
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((word) => word.replace(/^['-]+|['-]+$/g, ''));
-
-    const seen = new Set<string>();
-    const keywords: string[] = [];
-    for (const raw of words) {
-      const lower = raw.toLowerCase();
-      if (lower.length < 3 || STOP_WORDS.has(lower)) continue;
-      if (seen.has(lower)) continue;
-      seen.add(lower);
-      keywords.push(raw);
-      if (keywords.length >= MAX_WORDS) break;
-    }
-
-    const pool = keywords.length ? keywords : words.slice(0, MAX_WORDS);
-    let title = pool
-      .slice(0, MAX_WORDS)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (!title) {
-      return 'New Chat';
-    }
-
-    const wasTruncated = title.length > MAX_CHARS || pool.length > MAX_WORDS;
-    if (title.length > MAX_CHARS) {
-      title = title.slice(0, MAX_CHARS).trimEnd();
-    }
-
-    if (wasTruncated) {
-      title = `${title}…`;
-    }
-
-    return title;
-  };
-
   const handleToolSelect = (text: string) => {
     setInputValue(text);
   };
@@ -698,10 +625,6 @@ const Index = () => {
     // Generate unique request ID for tracking
     const requestId = crypto.randomUUID();
     activeRequestRef.current = { sessionId, requestId };
-
-    // Store original text for title generation later
-    const originalText = text;
-    const hasImage = !!images?.length;
 
     // Check if we're responding to a clarification request
     const currentChat = chatSessions.find(c => c.id === sessionId);
@@ -1034,76 +957,15 @@ const Index = () => {
         }
       }
 
-      // Auto-name chat AFTER assistant reply (only if title is still "New Chat")
-      console.log('[AUTO-TITLE] Loaded chat data:', { 
-        sessionId, 
-        currentTitle: chatData.title,
-        hasMessages: !!chatData.messages?.length 
-      });
-      
-      let shouldUpdateTitle = false;
-      let autoTitle = '';
-      
-      // Check loaded chat data and local state for "New Chat" title
-      const localChat = chatSessions.find((c) => c.id === sessionId);
-      const isNewChatTitle =
-        chatData.title === 'New Chat' ||
-        localChat?.title === 'New Chat' ||
-        !chatData.title;
-      
-      if (isNewChatTitle) {
-        shouldUpdateTitle = true;
-        
-        // Determine text to use for title generation
-        const firstMessages = chatData.messages?.slice(0, 4) || [];
-        const firstUserMsg = firstMessages.find((m: Message) => m.role === 'user' && m.content?.trim());
-        const firstAssistantMsg = firstMessages.find((m: Message) => m.role === 'assistant' && m.content?.trim());
-
-        const combinedContext = [
-          firstUserMsg?.content || '',
-          firstAssistantMsg?.content || '',
-          originalText || ''
-        ].find((txt) => !!txt?.trim()) || '';
-
-        console.log('[AUTO-TITLE] Will generate title from:', { 
-          firstUser: firstUserMsg?.content?.substring(0, 80), 
-          firstAssistant: firstAssistantMsg?.content?.substring(0, 80),
-          fallback: combinedContext.substring(0, 80),
-          hasImage 
-        });
-        
-        // Generate title from early conversation context
-        autoTitle = generateChatTitle(firstMessages, combinedContext, hasImage);
-        
-        console.log('[AUTO-TITLE] Generated title:', autoTitle);
-      }
-
-      // Persist auto-generated title to backend when needed
-      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        await updateChatTitle(sessionId, userId, autoTitle, userRole);
-      }
-
-      // Refresh sidebar to show updated title and all sessions
-      console.log('[AUTO-TITLE] Fetching fresh chat list...');
+      // Refresh sidebar to show updated title and all sessions (backend now auto-renames)
       const sessions = await listChats(userId, userRole);
       const rawSessions = Array.isArray(sessions) ? sessions : sessions.sessions || [];
-      let formattedSessions: ChatSession[] = rawSessions.map(s => ({
+      const formattedSessions: ChatSession[] = rawSessions.map(s => ({
         id: s.session_id || s.id,
         title: s.title || s.name || 'New Chat',
         messages: normalizeMessages(s),
         createdAt: s.created_at || s.createdAt || Date.now()
       }));
-      
-      console.log('[AUTO-TITLE] Fresh sessions from backend:', 
-        formattedSessions.map(s => ({ id: s.id, title: s.title }))
-      );
-      
-      // If backend list has not yet propagated the new title, force it locally
-      if (shouldUpdateTitle && autoTitle && autoTitle !== 'New Chat') {
-        formattedSessions = formattedSessions.map(chat =>
-          chat.id === sessionId ? { ...chat, title: autoTitle } : chat
-        );
-      }
       
       // CRITICAL: Final check before updating state
       if (activeRequestRef.current?.sessionId !== sessionId || 
@@ -1118,8 +980,6 @@ const Index = () => {
           ? { ...chat, messages: chatData.messages || [] }
           : chat
       ));
-      
-      console.log('[AUTO-TITLE] State updated with new title');
     } catch (error: any) {
       console.error('Error processing request:', error);
 

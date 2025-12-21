@@ -67,6 +67,10 @@ FREE_MODELS = {
     "gpt-4o",
 }
 ALLOWED_MODELS = {*FREE_MODELS, *STUDENT_MODELS, *PRO_MODELS}
+TITLE_MAX_WORDS = 6
+TITLE_MAX_CHARS = 48
+TITLE_MIN_WORDS_FOR_ELLIPSIS = 3
+DEFAULT_IMAGE_PROMPT = "Extract all problems from this image and solve them."
 
 PERSONAS = {
     "classic": {
@@ -168,6 +172,144 @@ async def _chat(messages, max_tokens=1400):
     if not res["ok"]:
         return {"error": res["error"]}
     return {"text": res["text"]}
+
+
+def _clean_title_text(text: str) -> str:
+    cleaned = regex.sub(r"\s+", " ", (text or "")).strip(" .,:;\"'`-")
+    return cleaned
+
+
+def _truncate_title(title: str) -> tuple[str | None, bool]:
+    """
+    Enforce length constraints:
+    - Max 6 words
+    - Max 48 characters
+    Returns (title, was_truncated)
+    """
+    if not title:
+        return None, False
+
+    words = [w for w in _clean_title_text(title).split(" ") if w]
+    trimmed, truncated = [], False
+
+    for word in words:
+        candidate = trimmed + [word]
+        candidate_text = " ".join(candidate)
+        if len(candidate) > TITLE_MAX_WORDS or len(candidate_text) > TITLE_MAX_CHARS:
+            truncated = True
+            break
+        trimmed = candidate
+
+    if not trimmed and words:
+        trimmed = [words[0][:TITLE_MAX_CHARS]]
+        truncated = True
+
+    final_title = " ".join(trimmed)
+    if len(final_title) > TITLE_MAX_CHARS:
+        final_title = final_title[:TITLE_MAX_CHARS].rstrip()
+        truncated = True
+
+    if truncated:
+        final_title = final_title.rstrip(". ,;:-")
+        final_title = f"{final_title}…"
+
+    return (final_title or None), truncated
+
+
+def _keyword_fallback_title(user_text: str) -> str | None:
+    stop_words = {
+        "the", "a", "an", "and", "or", "but", "for", "nor", "with", "on", "in", "at",
+        "to", "from", "by", "of", "about", "as", "is", "are", "was", "were", "be",
+        "being", "been", "that", "this", "these", "those", "it", "its", "into", "over",
+        "under", "after", "before", "up", "down", "out", "so", "if", "then", "than",
+        "too", "very", "can", "could", "should", "would",
+    }
+    words = [
+        regex.sub(r"[^\w'-]", "", w)
+        for w in (user_text or "").split()
+    ]
+    keywords = []
+    for word in words:
+        low = word.lower()
+        if len(word) < 3 or low in stop_words or not word:
+            continue
+        keywords.append(word.capitalize())
+        if len(keywords) >= TITLE_MAX_WORDS:
+            break
+
+    if not keywords:
+        return None
+
+    joined = " ".join(keywords)
+    trimmed, _ = _truncate_title(joined)
+    return trimmed
+
+
+async def _openai_title(user_text: str, assistant_text: str | None = None) -> str | None:
+    prompt = (
+        "Generate a sidebar-friendly chat title for a math tutoring session. "
+        "Rules: 4-6 words, <= 48 characters, no quotes, no ending punctuation. "
+        "Summarize the topic from the first user message (and first assistant reply if present); "
+        "never repeat the full prompt verbatim. Use an ellipsis only if you have to truncate."
+    )
+    messages = [
+        {"role": "system", "content": prompt},
+        {
+            "role": "user",
+            "content": (
+                f"User message: {user_text[:400]}\n"
+                f"Assistant reply: {assistant_text[:400] if assistant_text else '[none yet]'}\n"
+                "Return only the title text."
+            ),
+        },
+    ]
+    result = await safe_openai_json(messages, "gpt-4o-mini", max_tokens=32, temperature=0)
+    if not result.get("ok"):
+        return None
+    raw = _clean_title_text(result.get("text", ""))
+    trimmed, _ = _truncate_title(raw)
+    return trimmed
+
+
+def auto_title_session(user_id: str, session: dict, session_id: str, user_text: str, assistant_text: str | None):
+    """
+    Auto-generate a concise title from the earliest conversation context.
+    - Only runs when the session title is still unset or 'New Chat'
+    - Prefers OpenAI summarization; falls back to keyword extraction
+    """
+    try:
+        if not user_id or not session_id or not session:
+            return
+        if session.get("title") not in {None, "", "New Chat"}:
+            return
+
+        history = session.get("messages") or []
+        first_user = next((m.get("content") for m in history if m.get("role") == "user" and m.get("content")), None)
+        first_assistant = next((m.get("content") for m in history if m.get("role") == "assistant" and m.get("content")), None)
+
+        # Prefer the earliest meaningful user text; skip placeholder image prompts.
+        candidate_user = _clean_title_text(first_user or user_text or "")
+        if candidate_user.lower().startswith(DEFAULT_IMAGE_PROMPT.lower()):
+            candidate_user = ""
+
+        if not candidate_user:
+            return
+
+        # OpenAI-powered summary first
+        generated = asyncio.run(_openai_title(candidate_user, first_assistant or assistant_text))
+        title = generated or _keyword_fallback_title(candidate_user)
+
+        if not title:
+            return
+
+        # Final enforcement of limits/ellipsis
+        final_title, _ = _truncate_title(title)
+        if not final_title:
+            return
+
+        update_title(user_id, session_id, final_title)
+    except Exception as exc:
+        print(f"[AUTO-TITLE] failed: {exc}")
 
 
 # ----------------- SymPy Execution helpers -----------------
@@ -1066,6 +1208,8 @@ def lambda_handler(event, context):
             if user_id and session_id and session:
                 append_message(user_id, session_id, "user", text)
                 append_message(user_id, session_id, "assistant", reply)
+                # Auto-title new chats from the first meaningful turn
+                auto_title_session(user_id, session, session_id, text, reply)
             usage_info = increment_usage(user_id, user_role)
             return respond(
                 200,
