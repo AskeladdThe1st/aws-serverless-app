@@ -431,26 +431,38 @@ const Index = () => {
     if (hasImage) {
       return 'Graph Analysis';
     }
-    
-    if (!text.trim()) {
+
+    const trimmed = text.trim();
+    if (!trimmed) {
       return 'New Chat';
     }
-    
-    // Take first 6-10 words
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    const titleWords = words.slice(0, Math.min(10, words.length));
-    let title = titleWords.join(' ');
-    
-    // Capitalize first letter
-    if (title.length > 0) {
-      title = title.charAt(0).toUpperCase() + title.slice(1);
+
+    // Prefer short, keyword-focused titles to avoid sidebar overflow.
+    const STOP_WORDS = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'with', 'on', 'in', 'at', 'to', 'from', 'by', 'of', 'about', 'as',
+      'is', 'are', 'was', 'were', 'be', 'being', 'been', 'that', 'this', 'these', 'those', 'it', 'its', 'into', 'over', 'under',
+      'after', 'before', 'up', 'down', 'out', 'so', 'if', 'then', 'than', 'too', 'very', 'can', 'could', 'should', 'would'
+    ]);
+
+    const MAX_TITLE_LENGTH = 36;
+    const words = trimmed
+      .replace(/[^\w\s'-]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const keywordCandidates = words
+      .map(word => word.replace(/^['-]+|['-]+$/g, ''))
+      .filter(word => word.length > 2 && !STOP_WORDS.has(word.toLowerCase()));
+
+    const selectedWords = (keywordCandidates.length ? keywordCandidates : words).slice(0, 6);
+    let title = selectedWords
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    if (title.length > MAX_TITLE_LENGTH) {
+      title = title.slice(0, MAX_TITLE_LENGTH - 3).trimEnd() + '...';
     }
-    
-    // Truncate if too long
-    if (title.length > 60) {
-      title = title.substring(0, 57) + '...';
-    }
-    
+
     return title || 'New Chat';
   };
 
