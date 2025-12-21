@@ -223,8 +223,8 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                             setIsOpen(false);
                           }}
                           className={cn(
-                            "group relative flex w-full min-w-0 items-center gap-2 rounded-lg cursor-pointer transition-all border border-transparent", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
-                            "hover:bg-sidebar-hover hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                            "group relative flex w-full max-w-full min-w-0 items-center gap-2 rounded-full cursor-pointer transition-all border overflow-hidden", // min-w-0 ensures children can shrink so truncation works and the delete button stays visible
+                            "bg-transparent border-transparent hover:bg-sidebar-hover/90 hover:border-sidebar-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                             activeChat === chat.id ? "bg-sidebar-hover border-sidebar-border" : "bg-transparent",
                             isCollapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2"
                           )}
@@ -241,21 +241,26 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
                           <MessageSquare className={cn("h-4 w-4 text-muted-foreground flex-shrink-0", isCollapsed && "h-5 w-5")} />
 
                           {!isCollapsed && (
-                            <div className="relative flex flex-1 min-w-0 items-center"> {/* relative: anchor for overlay delete button */}
-                              <span className="flex-1 min-w-0 truncate pr-10 text-sm text-foreground">
+                            <div className="relative flex flex-1 min-w-0 items-center overflow-hidden rounded-full px-2 py-1 group-hover:bg-sidebar-hover group-focus-within:bg-sidebar-hover transition-colors"> {/* relative: anchor for overlay delete button */}
+                              <span className="block flex-1 min-w-0 truncate pr-10 text-sm text-foreground">
                                 {chat.title}
                               </span>
+                              <div
+                                aria-hidden
+                                className="pointer-events-none absolute inset-y-1 right-9 w-8 bg-gradient-to-l from-sidebar-bg via-sidebar-bg/70 to-transparent group-hover:from-sidebar-hover group-hover:via-sidebar-hover/70"
+                              />
 
                               <button
                                 onClick={(e) => handleDeleteClick(e, chat.id)}
                                 className={cn(
                                   "absolute right-2 top-1/2 -translate-y-1/2 z-10", // overlay on the right
                                   "h-7 w-7 grid place-items-center rounded-md",
-                                  "bg-background/70 border border-border/50 backdrop-blur-sm",
-                                  "opacity-0 group-hover:opacity-100",
+                                  "bg-background/95 border border-border/60 shadow-sm",
+                                  "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
                                   "transition-opacity",
-                                  "pointer-events-none group-hover:pointer-events-auto",
-                                  "hover:bg-muted"
+                                  "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
+                                  "hover:bg-muted focus-visible:bg-muted",
+                                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                                 )}
                                 aria-label="Delete chat"
                               >
