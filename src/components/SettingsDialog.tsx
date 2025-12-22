@@ -132,8 +132,8 @@ export const SettingsDialog = ({
           {/* Model Settings Section */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium">Model Settings</h3>
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Selected Model</Label>
+            <div className="space-y-3">
+              <Label className="text-sm text-muted-foreground block pb-0.5">Selected Model</Label>
               <ModelSelector
                 value={selectedModel}
                 onValueChange={onModelChange}

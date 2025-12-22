@@ -40,7 +40,7 @@ const Index = () => {
   const [conciseAnswers, setConciseAnswers] = useState(false);
   const [sympyVerification, setSympyVerification] = useState(true);
   const [usage, setUsage] = useState<any>(null);
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [profile, setProfile] = useState<{ persona: string; avatarUrl?: string }>({ persona: DEFAULT_PERSONA_ID });
@@ -465,7 +465,7 @@ const Index = () => {
         return;
       }
 
-      setIsCheckoutLoading(true);
+      setCheckoutPlanId(planId);
       const { userId, userRole } = getIdentity();
       const selectedPlan = planId === 'pro' ? 'pro' : 'student';
       const result = await createCheckoutSession(userId, userRole, selectedPlan, priceId);
@@ -480,7 +480,7 @@ const Index = () => {
       console.error('Failed to start checkout', error);
       toast({ title: 'Stripe error', description: error?.message || 'Unable to start checkout', variant: 'destructive' });
     } finally {
-      setIsCheckoutLoading(false);
+      setCheckoutPlanId(null);
     }
   };
 
@@ -1206,7 +1206,8 @@ const Index = () => {
         open={isPricingOpen}
         onOpenChange={setIsPricingOpen}
         onSelectPlan={handlePlanSelect}
-        isProcessing={isCheckoutLoading}
+        isProcessing={Boolean(checkoutPlanId)}
+        processingPlanId={checkoutPlanId}
       />
     </div>
   );
