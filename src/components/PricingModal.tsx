@@ -8,6 +8,7 @@ interface PricingModalProps {
   onOpenChange: (open: boolean) => void;
   onSelectPlan: (planId: string, priceId?: string) => void;
   isProcessing?: boolean;
+  processingPlanId?: string | null;
 }
 
 const plans = [
@@ -53,7 +54,13 @@ const plans = [
   },
 ];
 
-export const PricingModal = ({ open, onOpenChange, onSelectPlan, isProcessing = false }: PricingModalProps) => {
+export const PricingModal = ({
+  open,
+  onOpenChange,
+  onSelectPlan,
+  isProcessing = false,
+  processingPlanId = null,
+}: PricingModalProps) => {
   const handlePlanSelect = (planId: string, priceId?: string) => {
     onSelectPlan(planId, priceId);
   };
@@ -98,14 +105,20 @@ export const PricingModal = ({ open, onOpenChange, onSelectPlan, isProcessing = 
                 ))}
               </ul>
 
-              <Button
-                onClick={() => handlePlanSelect(plan.id, plan.priceId)}
-                variant={plan.recommended ? 'default' : 'outline'}
-                className="w-full"
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Starting checkout...' : 'Choose plan'}
-              </Button>
+              {plan.id === 'free' ? (
+                <div className="w-full rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
+                  Included with your free account
+                </div>
+              ) : (
+                <Button
+                  onClick={() => handlePlanSelect(plan.id, plan.priceId)}
+                  variant={plan.recommended ? 'default' : 'outline'}
+                  className="w-full"
+                  disabled={isProcessing && processingPlanId === plan.id}
+                >
+                  {isProcessing && processingPlanId === plan.id ? 'Starting checkout...' : 'Choose plan'}
+                </Button>
+              )}
             </div>
           ))}
         </div>
