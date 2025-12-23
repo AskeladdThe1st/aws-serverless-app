@@ -1,32 +1,29 @@
-# Project Overview
-Math Tutor Agent is a React + Vite front-end hosted on AWS Amplify that talks to a Python Lambda API. The Lambda solves math problems (including image-based graph analysis), tracks usage/limits, and persists chats so users can return to past sessions.
+## Project Overview
+Serverless AWS application demonstrating managed services, CI/CD via AWS Amplify, and backend integration with AWS services for a math-focused workflow. The repository is now named **aws-serverless-app** and runs a stable deployment through Amplify.
 
-# Architecture Overview (AWS services used and why)
-- **AWS Amplify Hosting**: Serves the static React build and handles CI/CD for the UI.
-- **AWS Lambda (containerized, Python)**: Stateless compute for problem solving, graph analysis, and usage enforcement.
-- **Amazon DynamoDB**: `calculus_sessions` stores chat histories; `calculus_usage` tracks plan/usage limits.
-- **AWS Secrets Manager**: Stores OpenAI and Stripe secrets when not provided via env vars.
-- **Amazon S3** (optional): Stores uploaded avatar images when `PROFILE_BUCKET` is set.
-- **Amazon ECR**: Hosts the Lambda container image produced by CI.
-- **Stripe**: Billing for student/pro plans (price IDs supplied via env vars).
-- **CloudWatch Logs**: Observability for Lambda runs and deployment diagnostics.
+## Architecture Overview
+![AWS Architecture Diagram](docs/aws-architecture.png)
 
-# Deployment Flow
-1. Push to `main` triggers `.github/workflows/backend-lambda-ecr.yml`.
-2. The workflow assumes the deploy role (`AWS_DEPLOY_ROLE_ARN`), builds the `backend/` Docker image with `GIT_SHA`/`BUILD_TIME` build args, pushes to ECR (`ECR_REPOSITORY`), and runs `aws lambda update-function-code` for `LAMBDA_FUNCTION_NAME`.
-3. Amplify builds and deploys the React front-end from `main`, pointing to the Lambda Function URL (`LAMBDA_URL` in the UI code).
-4. Required GitHub configuration: repository variables `AWS_REGION`, `ECR_REPOSITORY`, `LAMBDA_FUNCTION_NAME`; secret `AWS_DEPLOY_ROLE_ARN`.
+User requests are routed through AWS Amplify, authenticated with Amazon Cognito, processed by AWS Lambda, and persisted or enriched through supporting AWS services.
 
-# Security Considerations (IAM roles, least privilege, auth)
-- **Deploy role (GitHub OIDC)**: Limit trust to this repo/branch; permissions only for ECR push and Lambda `UpdateFunctionCode`.
-- **Lambda execution role**: Grant least-privilege access to DynamoDB tables (`calculus_sessions`, `calculus_usage`), Secrets Manager entries for OpenAI/Stripe/webhook, and S3 avatar bucket (if enabled).
-- **Auth**: Front-end uses AWS Amplify Auth; backend enforces plan/model access and per-user limits.
-- **Secrets**: Prefer Secrets Manager (`OPENAI_SECRET_NAME`, `STRIPE_SECRET_NAME`, `STRIPE_WEBHOOK_SECRET_NAME`) over inline env vars.
+## Deployment Flow
+- GitHub repository is connected to AWS Amplify for continuous delivery.
+- Amplify builds and hosts the entire application (frontend and backend assets).
+- Backend logic executes in AWS Lambda.
 
-# Monitoring & Stability (CloudWatch)
-- CloudWatch Logs capture Lambda request/response traces, configuration diagnostics (`status`/`health` action), and deployment metadata from `GIT_SHA`/`BUILD_TIME`.
-- Watch for DynamoDB throttling, Secrets Manager access errors, and Stripe failures; alerts should be tied to Lambda error metrics.
+## AWS Services Used
+- **AWS Amplify**: Hosting and CI/CD for the application.
+- **Amazon Cognito**: User authentication for the front end.
+- **AWS Lambda**: Containerized Python backend that handles tutoring logic and integrations.
+- **Amazon DynamoDB**: Stores chat sessions and usage data.
+- **AWS Secrets Manager**: Manages API keys and payment configuration.
+- **Amazon S3** (optional): Stores profile assets when enabled.
+- **Amazon ECR**: Hosts the Lambda container image.
+- **Amazon CloudWatch**: Captures logs and deployment diagnostics.
 
-# Incident & Recovery Summary
-- **Recent rollback**: Production briefly served stale chat state after a deployment; resolving by redeploying the last known-good Lambda image restored persistence. Amplify/UI remained stable.
-- **Current posture**: CI-driven Lambda image updates and Amplify hosting are healthy; manual run of the deploy workflow can re-pin a known-good image if needed. 
+## Observability & Stability
+- CloudWatch logging is enabled for backend execution and deploy visibility.
+- Deployment issues are resolved by rolling back or cleaning up failed releases before re-deploying.
+
+## Notes
+- Personal cloud engineering project maintained for learning and demonstration purposes.
