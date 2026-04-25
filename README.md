@@ -1,5 +1,5 @@
 ## Project Overview
-Serverless AWS application demonstrating managed services, CI/CD via AWS Amplify, and backend integration with AWS services for a math-focused workflow. The repository is named **aws-serverless-app** and runs a stable deployment through Amplify.
+Serverless AWS application demonstrating managed services, CI/CD via AWS Amplify, and backend integration with AWS services for a math-focused workflow. The repository is now named **aws-serverless-app** and runs a stable deployment through Amplify.
 
 ## Architecture Overview
 ![AWS Architecture Diagram](docs/aws-architecture.png)
