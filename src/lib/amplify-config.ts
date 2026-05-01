@@ -1,5 +1,12 @@
 import { Amplify } from "aws-amplify";
 
+const productionRedirectUrl = "https://main.dxslzdzugej3p.amplifyapp.com/";
+const currentRedirectUrl =
+  typeof window !== "undefined" ? `${window.location.origin}/` : productionRedirectUrl;
+const redirectUrls = Array.from(
+  new Set([currentRedirectUrl, productionRedirectUrl, "http://localhost:3000/", "http://localhost:5173/"])
+);
+
 const amplifyConfig = {
   Auth: {
     Cognito: {
@@ -12,8 +19,8 @@ const amplifyConfig = {
         oauth: {
           domain: "us-east-15hst2ltpo.auth.us-east-1.amazoncognito.com",
           scopes: ["openid", "email", "profile"],
-          redirectSignIn: ["https://main.d28oxriiimrzcl.amplifyapp.com/", "http://localhost:3000/"],
-          redirectSignOut: ["https://main.d28oxriiimrzcl.amplifyapp.com/", "http://localhost:3000/"],
+          redirectSignIn: redirectUrls,
+          redirectSignOut: redirectUrls,
           responseType: "code" as const,
         },
       },
