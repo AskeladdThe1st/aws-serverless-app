@@ -50,7 +50,7 @@ export const ProfileSettings = ({
   return (
     <div className="space-y-6">
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-medium">Tutor persona</h3>
           <p className="text-xs text-muted-foreground">Locked personas require higher plans.</p>
         </div>
@@ -70,19 +70,19 @@ export const ProfileSettings = ({
                   onPersonaChange(persona.id);
                 }}
                 className={cn(
-                  'group relative rounded-xl border p-4 text-left transition-all',
+                  'group relative min-w-0 rounded-xl border p-4 text-left transition-all',
                   selectedPersona === persona.id
                     ? 'border-primary bg-primary/5 shadow-sm'
                     : 'border-border hover:border-primary/50 hover:bg-muted/30'
                 )}
               >
-                <div className="flex items-start gap-3">
-                  <Avatar className="h-10 w-10 shadow-sm">
+                <div className="flex min-w-0 items-start gap-3">
+                  <Avatar className="h-10 w-10 shrink-0 shadow-sm">
                     <AvatarImage src={persona.avatar} alt={persona.name} />
                     <AvatarFallback>{persona.name[0]}</AvatarFallback>
                   </Avatar>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-sm text-foreground">{persona.name}</p>
                       <Badge variant="secondary" className="text-[11px] capitalize">
                         {persona.tier === 'guest' ? 'free' : persona.tier}

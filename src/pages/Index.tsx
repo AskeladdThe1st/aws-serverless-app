@@ -1079,7 +1079,7 @@ const Index = () => {
 
         {isLandingScreen ? (
           /* Landing Screen - Centered Input */
-          <div className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
+          <div className="flex-1 flex flex-col items-center justify-center overflow-y-auto px-6 py-8 [justify-content:safe_center]">
             <div className="w-full max-w-4xl space-y-12">
               <div className="text-center">
                 <h1 className="text-4xl md:text-5xl font-semibold text-foreground">
