@@ -291,6 +291,41 @@ const Index = () => {
     refreshProfile();
   }, [authLoading, refreshProfile]);
 
+  useEffect(() => {
+    if (authLoading || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const checkoutState = params.get('checkout');
+    if (!checkoutState) return;
+
+    if (checkoutState === 'success') {
+      toast({
+        title: 'Checkout complete',
+        description: 'Your plan will update once Stripe confirms the subscription.',
+      });
+      refreshUsage();
+      const timer = window.setTimeout(() => {
+        refreshUsage();
+      }, 3000);
+      params.delete('checkout');
+      params.delete('plan');
+      const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', nextUrl);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (checkoutState === 'cancel') {
+      toast({
+        title: 'Checkout canceled',
+        description: 'No subscription changes were made.',
+      });
+      params.delete('checkout');
+      params.delete('plan');
+      const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', nextUrl);
+    }
+  }, [authLoading, refreshUsage, toast]);
+
   // Force KaTeX to re-render after new messages
   useEffect(() => {
     if (messagesContainerRef.current && typeof window !== 'undefined') {
@@ -468,7 +503,10 @@ const Index = () => {
       setCheckoutPlanId(planId);
       const { userId, userRole } = getIdentity();
       const selectedPlan = planId === 'pro' ? 'pro' : 'student';
-      const result = await createCheckoutSession(userId, userRole, selectedPlan, priceId);
+      const appUrl = `${window.location.origin}/`;
+      const successUrl = `${appUrl}?checkout=success&plan=${selectedPlan}`;
+      const cancelUrl = `${appUrl}?checkout=cancel`;
+      const result = await createCheckoutSession(userId, userRole, selectedPlan, priceId, successUrl, cancelUrl);
       const parsed = (result as any)?.body ? JSON.parse((result as any).body) : result;
       const checkoutUrl = (parsed as any)?.checkout_url;
       if (checkoutUrl) {

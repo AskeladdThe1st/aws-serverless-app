@@ -21,7 +21,7 @@ from graph_engine import (
 )
 
 SYSTEM_PROMPT = (
-    "You are Math Tutor Agent, a concise and accurate calculus tutor built by Muhammad Yusuf Rehman. "
+    "You are Math Tutor Agent, a concise and accurate tutor built by Muhammad Yusuf Rehman. "
     "If anyone asks who created you or who owns the app, always credit Muhammad Yusuf Rehman (not OpenAI). "
     "Write clear, structured solutions in clear Markdown — no HTML. "
     "Use short, numbered steps like a textbook solution (1–4 steps max). "
@@ -46,11 +46,30 @@ STRIPE_PRICE_STUDENT = os.environ.get("STRIPE_PRICE_STUDENT")
 STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
+APP_ORIGIN = (
+    os.environ.get("APP_ORIGIN")
+    or os.environ.get("FRONTEND_URL")
+    or "https://main.dxslzdzugej3p.amplifyapp.com"
+).rstrip("/")
+ALLOWED_ORIGINS = {
+    origin.strip().rstrip("/")
+    for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+}
+ALLOWED_ORIGINS.update(
+    {
+        APP_ORIGIN,
+        "https://main.dxslzdzugej3p.amplifyapp.com",
+        "https://main.d28oxriiimrzcl.amplifyapp.com",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    }
+)
 FREE_DAILY_LIMIT = int(os.environ.get("FREE_DAILY_LIMIT", "15"))
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "4"))
 GIT_SHA = os.environ.get("GIT_SHA", "unknown")
 BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
-# CORS is handled by the Lambda Function URL configuration; no manual CORS headers are set here.
+_REQUEST_ORIGIN = None
 
 PRO_MODELS = {
     "gpt-5.1",
@@ -364,12 +383,45 @@ def _verify_expression(code: str) -> bool:
 #                DYNAMODB CRUD HELPERS
 # ============================================================
 
+def _normalize_origin(value: str | None) -> str:
+    if not value:
+        return ""
+    raw = str(value).strip()
+    match = regex.match(r"^https?://[^/\s]+", raw)
+    return match.group(0).rstrip("/") if match else ""
+
+
+def _allowed_cors_origin(origin: str | None) -> str:
+    normalized = _normalize_origin(origin)
+    if not normalized:
+        return "*"
+    if normalized in ALLOWED_ORIGINS:
+        return normalized
+    if regex.match(r"^https://[a-z0-9-]+\.[a-z0-9]+\.amplifyapp\.com$", normalized):
+        return normalized
+    if regex.match(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$", normalized):
+        return normalized
+    return APP_ORIGIN
+
+
+def _cors_headers(origin: str | None = None) -> dict:
+    request_origin = origin or globals().get("_REQUEST_ORIGIN")
+    return {
+        "Access-Control-Allow-Origin": _allowed_cors_origin(request_origin),
+        "Access-Control-Allow-Headers": "Content-Type, Stripe-Signature",
+        "Access-Control-Allow-Methods": "OPTIONS,POST",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin",
+    }
+
+
 def respond(status: int, body: dict, origin: str | None = None):
-    """Return a JSON response with content-type headers."""
+    """Return a JSON response with content-type and CORS headers."""
     return {
         "statusCode": status,
         "headers": {
             "Content-Type": "application/json",
+            **_cors_headers(origin),
         },
         "body": json.dumps(body),
     }
@@ -457,6 +509,10 @@ def _config_status(force_refresh: bool = False):
             _ = _get_webhook_secret()
         except Exception as e:
             warnings.append(f"Stripe webhook secret unavailable: {e}")
+    if not STRIPE_PRICE_STUDENT:
+        errors.append("STRIPE_PRICE_STUDENT is not configured")
+    if not STRIPE_PRICE_PRO:
+        errors.append("STRIPE_PRICE_PRO is not configured")
 
     CONFIG_CHECK = {"ok": len(errors) == 0, "errors": errors, "warnings": warnings}
     CONFIG_CHECK_AT = now
@@ -634,6 +690,67 @@ def update_subscription(
         raise RuntimeError(
             f"DynamoDB update_subscription failed: {e.response.get('Error', {}).get('Message', str(e))}"
         ) from e
+
+
+def _stripe_metadata(user_id: str, plan_choice: str) -> dict:
+    return {"user_id": str(user_id), "plan": str(plan_choice)}
+
+
+def _allowed_checkout_origin(body: dict) -> str:
+    candidates = [
+        body.get("frontend_url"),
+        body.get("app_url"),
+        body.get("origin"),
+        globals().get("_REQUEST_ORIGIN"),
+    ]
+    for candidate in candidates:
+        normalized = _normalize_origin(candidate)
+        if normalized and _allowed_cors_origin(normalized) == normalized:
+            return normalized
+    return ""
+
+
+def _checkout_return_url(body: dict, key: str, fallback: str, checkout_state: str) -> str:
+    explicit = body.get(key)
+    if explicit:
+        return str(explicit)
+    origin = _allowed_checkout_origin(body)
+    if origin:
+        return f"{origin}/?checkout={checkout_state}"
+    return fallback
+
+
+def _subscription_metadata(subscription: dict | None) -> dict:
+    if not subscription:
+        return {}
+    return dict(subscription.get("metadata") or {})
+
+
+def _plan_from_subscription(subscription: dict | None) -> str | None:
+    metadata = _subscription_metadata(subscription)
+    plan = str(metadata.get("plan") or "").lower()
+    if plan in {"student", "pro", "free"}:
+        return plan
+
+    items = ((subscription or {}).get("items") or {}).get("data") or []
+    for item in items:
+        price = (item or {}).get("price") or {}
+        price_id = price.get("id")
+        if price_id == STRIPE_PRICE_PRO:
+            return "pro"
+        if price_id == STRIPE_PRICE_STUDENT:
+            return "student"
+    return None
+
+
+def _retrieve_subscription(subscription_id: str | None):
+    if not subscription_id:
+        return None
+    try:
+        return stripe.Subscription.retrieve(subscription_id)
+    except Exception as e:
+        print(f"Unable to retrieve Stripe subscription {subscription_id}: {e}")
+        return None
 
 
 def check_model_entitlement(
@@ -869,18 +986,6 @@ def lambda_handler(event, context):
 
         config = _config_status()
 
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
-        config = _config_status()
-
         # Stripe webhook handling (raw payload)
         stripe_sig = headers.get("stripe-signature")
         if stripe_sig:
@@ -899,24 +1004,44 @@ def lambda_handler(event, context):
             if evt_type == "checkout.session.completed":
                 metadata = data_obj.get("metadata") or {}
                 user_meta = dict(metadata)
-                uid = user_meta.get("user_id") or user_meta.get("userId") or "guest"
-                update_subscription(
-                    uid,
-                    data_obj.get("status", "active"),
-                    data_obj.get("customer"),
-                    data_obj.get("subscription"),
-                    plan_type=user_meta.get("plan"),
+                subscription_id = data_obj.get("subscription")
+                subscription = _retrieve_subscription(subscription_id)
+                subscription_meta = _subscription_metadata(subscription)
+                uid = (
+                    user_meta.get("user_id")
+                    or user_meta.get("userId")
+                    or subscription_meta.get("user_id")
+                    or subscription_meta.get("userId")
                 )
-            elif evt_type == "customer.subscription.deleted":
+                if uid:
+                    update_subscription(
+                        uid,
+                        (subscription or {}).get("status") or "active",
+                        data_obj.get("customer"),
+                        subscription_id,
+                        plan_type=user_meta.get("plan") or _plan_from_subscription(subscription),
+                    )
+                else:
+                    print("Stripe checkout completed without user_id metadata")
+            elif evt_type in {
+                "customer.subscription.created",
+                "customer.subscription.updated",
+                "customer.subscription.deleted",
+            }:
                 metadata = data_obj.get("metadata") or {}
-                uid = metadata.get("user_id") or metadata.get("userId") or "guest"
-                update_subscription(
-                    uid,
-                    data_obj.get("status", "canceled"),
-                    data_obj.get("customer"),
-                    data_obj.get("id"),
-                    plan_type="free",
-                )
+                uid = metadata.get("user_id") or metadata.get("userId")
+                if uid:
+                    update_subscription(
+                        uid,
+                        data_obj.get("status", "canceled"),
+                        data_obj.get("customer"),
+                        data_obj.get("id"),
+                        plan_type="free"
+                        if evt_type == "customer.subscription.deleted"
+                        else _plan_from_subscription(data_obj),
+                    )
+                else:
+                    print(f"{evt_type} missing user_id metadata")
             return respond(200, {"received": True})
 
         # CORS preflight
@@ -1049,12 +1174,15 @@ def lambda_handler(event, context):
                 return respond(500, {"error": "StripeConfigError", "message": "Stripe secret is empty"})
             try:
                 stripe.api_key = stripe_api_key
+                metadata = _stripe_metadata(user_id, plan_choice)
                 session = stripe.checkout.Session.create(
                     mode="subscription",
                     line_items=[{"price": price_id, "quantity": 1}],
-                    success_url=body.get("success_url") or SUCCESS_URL,
-                    cancel_url=body.get("cancel_url") or CANCEL_URL,
-                    metadata={"user_id": user_id, "plan": plan_choice},
+                    success_url=_checkout_return_url(body, "success_url", SUCCESS_URL, "success"),
+                    cancel_url=_checkout_return_url(body, "cancel_url", CANCEL_URL, "cancel"),
+                    client_reference_id=user_id,
+                    metadata=metadata,
+                    subscription_data={"metadata": metadata},
                 )
                 return respond(
                     200,

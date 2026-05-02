@@ -37,7 +37,7 @@ async function callLambda(body: any, userRole: "guest" | "user" = "guest") {
 
   // If the backend explicitly returns an error field, surface it
   if (!res.ok && parsed?.error) {
-    const err: any = new Error(parsed.error || "Request failed");
+    const err: any = new Error(parsed.message || parsed.error || "Request failed");
     err.payload = parsed;
     err.status = res.status;
     throw err;
