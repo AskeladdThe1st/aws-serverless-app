@@ -46,30 +46,10 @@ STRIPE_PRICE_STUDENT = os.environ.get("STRIPE_PRICE_STUDENT")
 STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO")
 SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL", "https://example.com/success")
 CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL", "https://example.com/cancel")
-APP_ORIGIN = (
-    os.environ.get("APP_ORIGIN")
-    or os.environ.get("FRONTEND_URL")
-    or "https://main.dxslzdzugej3p.amplifyapp.com"
-).rstrip("/")
-ALLOWED_ORIGINS = {
-    origin.strip().rstrip("/")
-    for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",")
-    if origin.strip()
-}
-ALLOWED_ORIGINS.update(
-    {
-        APP_ORIGIN,
-        "https://main.dxslzdzugej3p.amplifyapp.com",
-        "https://main.d28oxriiimrzcl.amplifyapp.com",
-        "http://localhost:3000",
-        "http://localhost:5173",
-    }
-)
 FREE_DAILY_LIMIT = int(os.environ.get("FREE_DAILY_LIMIT", "15"))
 GUEST_DAILY_LIMIT = int(os.environ.get("GUEST_DAILY_LIMIT", "4"))
 GIT_SHA = os.environ.get("GIT_SHA", "unknown")
 BUILD_TIME = os.environ.get("BUILD_TIME", "unknown")
-_REQUEST_ORIGIN = None
 
 PRO_MODELS = {
     "gpt-5.1",
@@ -383,45 +363,12 @@ def _verify_expression(code: str) -> bool:
 #                DYNAMODB CRUD HELPERS
 # ============================================================
 
-def _normalize_origin(value: str | None) -> str:
-    if not value:
-        return ""
-    raw = str(value).strip()
-    match = regex.match(r"^https?://[^/\s]+", raw)
-    return match.group(0).rstrip("/") if match else ""
-
-
-def _allowed_cors_origin(origin: str | None) -> str:
-    normalized = _normalize_origin(origin)
-    if not normalized:
-        return "*"
-    if normalized in ALLOWED_ORIGINS:
-        return normalized
-    if regex.match(r"^https://[a-z0-9-]+\.[a-z0-9]+\.amplifyapp\.com$", normalized):
-        return normalized
-    if regex.match(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$", normalized):
-        return normalized
-    return APP_ORIGIN
-
-
-def _cors_headers(origin: str | None = None) -> dict:
-    request_origin = origin or globals().get("_REQUEST_ORIGIN")
-    return {
-        "Access-Control-Allow-Origin": _allowed_cors_origin(request_origin),
-        "Access-Control-Allow-Headers": "Content-Type, Stripe-Signature",
-        "Access-Control-Allow-Methods": "OPTIONS,POST",
-        "Access-Control-Max-Age": "86400",
-        "Vary": "Origin",
-    }
-
-
-def respond(status: int, body: dict, origin: str | None = None):
-    """Return a JSON response with content-type and CORS headers."""
+def respond(status: int, body: dict):
+    """Return a JSON response with content-type headers."""
     return {
         "statusCode": status,
         "headers": {
             "Content-Type": "application/json",
-            **_cors_headers(origin),
         },
         "body": json.dumps(body),
     }
@@ -696,27 +643,10 @@ def _stripe_metadata(user_id: str, plan_choice: str) -> dict:
     return {"user_id": str(user_id), "plan": str(plan_choice)}
 
 
-def _allowed_checkout_origin(body: dict) -> str:
-    candidates = [
-        body.get("frontend_url"),
-        body.get("app_url"),
-        body.get("origin"),
-        globals().get("_REQUEST_ORIGIN"),
-    ]
-    for candidate in candidates:
-        normalized = _normalize_origin(candidate)
-        if normalized and _allowed_cors_origin(normalized) == normalized:
-            return normalized
-    return ""
-
-
 def _checkout_return_url(body: dict, key: str, fallback: str, checkout_state: str) -> str:
     explicit = body.get(key)
     if explicit:
         return str(explicit)
-    origin = _allowed_checkout_origin(body)
-    if origin:
-        return f"{origin}/?checkout={checkout_state}"
     return fallback
 
 
@@ -981,8 +911,6 @@ def lambda_handler(event, context):
     try:
         headers_raw = event.get("headers") or {}
         headers = {str(k).lower(): v for k, v in headers_raw.items()}
-        global _REQUEST_ORIGIN
-        _REQUEST_ORIGIN = headers.get("origin") or headers.get("referer") or headers.get("host")
 
         config = _config_status()
 
@@ -1043,17 +971,6 @@ def lambda_handler(event, context):
                 else:
                     print(f"{evt_type} missing user_id metadata")
             return respond(200, {"received": True})
-
-        # CORS preflight
-        if (
-            event.get("requestContext", {})
-                .get("http", {})
-                .get("method", "")
-                .upper()
-            == "OPTIONS"
-            or (event.get("httpMethod") or "").upper() == "OPTIONS"
-        ):
-            return respond(200, {"ok": True})
 
         # Body parsing
         if "body" in event:
