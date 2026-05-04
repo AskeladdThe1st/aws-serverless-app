@@ -83,7 +83,10 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-muted hover:opacity-70 text-foreground transition-opacity"
+        className={cn(
+          "fixed top-4 left-4 z-50 lg:hidden bg-muted hover:opacity-70 text-foreground transition-opacity",
+          isOpen && "bg-background"
+        )}
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
@@ -105,7 +108,7 @@ export const ChatSidebar = ({ chats, activeChat, onNewChat, onSelectChat, onDele
         )}
       >
         {/* Header with Toggle */}
-        <div className="p-4 border-b border-sidebar-border flex items-center justify-between gap-2">
+        <div className="p-4 pl-20 lg:pl-4 border-b border-sidebar-border flex items-center justify-between gap-2">
           {!isCollapsed ? (
             <>
               <Button

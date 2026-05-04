@@ -1085,17 +1085,17 @@ const Index = () => {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header - Transparent */}
-        <div className="bg-transparent px-4 py-4 space-y-3">
+        <div className="bg-transparent px-4 py-4 pl-20 lg:pl-4 space-y-3">
           <div className="flex items-center justify-between text-foreground">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <img
                 src={einsteinIcon}
                 alt="Math Tutor Agent Einstein icon"
-                className="h-7 w-7"
+                className="h-7 w-7 flex-shrink-0"
                 loading="eager"
                 decoding="async"
               />
-              <div className="text-lg font-semibold">Math Tutor Agent</div>
+              <div className="truncate text-base font-semibold sm:text-lg">Math Tutor Agent</div>
             </div>
             <button
               onClick={() => setIsSettingsOpen(true)}
@@ -1120,11 +1120,11 @@ const Index = () => {
           <div className="flex-1 flex flex-col items-center justify-center overflow-y-auto px-6 py-8 [justify-content:safe_center]">
             <div className="w-full max-w-4xl space-y-12">
               <div className="text-center">
-                <h1 className="text-4xl md:text-5xl font-semibold text-foreground">
+                <h1 className="text-3xl font-semibold leading-tight text-foreground md:text-4xl">
                   How can Math Tutor Agent help with your math today?
                 </h1>
                 <p className="mt-4 text-lg text-muted-foreground">
-                  Your AI copilot for step-by-step insights, visual problem solving, and reliable math checks.
+                  Your math agent for step-by-step insights, visual problem solving, and reliable math checks.
                 </p>
               </div>
 
