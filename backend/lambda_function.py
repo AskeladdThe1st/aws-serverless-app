@@ -117,11 +117,35 @@ def clean_decimals(obj):
 
 # ----------------- OpenAI setup -----------------
 
+def _extract_secret_string(value, *keys) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in keys:
+            secret_value = value.get(key)
+            if secret_value:
+                return str(secret_value).strip()
+        return ""
+
+    text = str(value).strip()
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return text
+
+    if isinstance(parsed, dict):
+        extracted = _extract_secret_string(parsed, *keys)
+        return extracted or text
+    if isinstance(parsed, str):
+        return parsed.strip()
+    return text
+
+
 def _get_openai_api_key() -> str:
     # Prefer environment variable to keep Lambda portable across accounts.
     env_key = os.environ.get("OPENAI_API_KEY")
     if env_key:
-        return env_key
+        return _extract_secret_string(env_key, "api_key", "OPENAI_API_KEY", "key")
 
     # Fall back to Secrets Manager if configured.
     try:
@@ -135,11 +159,7 @@ def _get_openai_api_key() -> str:
         ) from e
 
     raw = secret.get("SecretString") or ""
-    try:
-        parsed = json.loads(raw)
-        key = parsed.get("api_key") or parsed.get("OPENAI_API_KEY") or parsed.get("key")
-    except Exception:
-        key = raw
+    key = _extract_secret_string(raw, "api_key", "OPENAI_API_KEY", "key")
     if not key:
         raise RuntimeError(
             "OpenAI API key is empty. Set OPENAI_API_KEY or populate the Secrets Manager value."
@@ -398,23 +418,19 @@ def _get_secret_value(secret_name: str):
 def _get_stripe_api_key() -> str:
     env_key = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")
     if env_key:
-        return env_key
+        return _extract_secret_string(env_key, "api_key", "secret", "STRIPE_SECRET_KEY", "STRIPE_API_KEY")
 
     raw = _get_secret_value(STRIPE_SECRET_NAME)
-    if isinstance(raw, dict):
-        return raw.get("api_key") or raw.get("secret") or raw.get("STRIPE_SECRET_KEY") or ""
-    return str(raw)
+    return _extract_secret_string(raw, "api_key", "secret", "STRIPE_SECRET_KEY", "STRIPE_API_KEY")
 
 
 def _get_webhook_secret() -> str:
     env_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
     if env_secret:
-        return env_secret
+        return _extract_secret_string(env_secret, "secret", "STRIPE_WEBHOOK_SECRET")
 
     raw = _get_secret_value(STRIPE_WEBHOOK_SECRET_NAME)
-    if isinstance(raw, dict):
-        return raw.get("secret") or raw.get("STRIPE_WEBHOOK_SECRET") or ""
-    return str(raw)
+    return _extract_secret_string(raw, "secret", "STRIPE_WEBHOOK_SECRET")
 
 
 def _config_status(force_refresh: bool = False):
@@ -1293,7 +1309,14 @@ def lambda_handler(event, context):
             messages.append({"role": "user", "content": user_content})
             chat_res = asyncio.run(_chat(messages, 1400))
             if "error" in chat_res:
-                return respond(500, {"error": "OpenAIError", "details": chat_res["error"]})
+                return respond(
+                    500,
+                    {
+                        "error": "OpenAIError",
+                        "message": chat_res["error"],
+                        "details": chat_res["error"],
+                    },
+                )
             reply = chat_res["text"]
             code = ""
             code_match = regex.search(r"```(?:python)?(.*?)```", reply, flags=regex.S)
@@ -1301,7 +1324,14 @@ def lambda_handler(event, context):
             if code and not _verify_expression(code):
                 fix_res = asyncio.run(_chat([{"role": "system", "content": "Fix this SymPy code to match the solution."}, {"role": "user", "content": code}], 300))
                 if "error" in fix_res:
-                    return respond(500, {"error": "OpenAIError", "details": fix_res["error"]})
+                    return respond(
+                        500,
+                        {
+                            "error": "OpenAIError",
+                            "message": fix_res["error"],
+                            "details": fix_res["error"],
+                        },
+                    )
                 fixed = regex.search(r"```(?:python)?(.*?)```", fix_res["text"], flags=regex.S)
                 if fixed:
                     code = fixed.group(1).strip()

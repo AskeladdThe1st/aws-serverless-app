@@ -1034,7 +1034,7 @@ const Index = () => {
           activeRequestRef.current?.requestId === requestId) {
         toast({
           title: 'Error',
-          description: payload?.message || payload?.error || (error instanceof Error ? error.message : 'Failed to process your request. Please try again.'),
+          description: payload?.message || payload?.details || payload?.error || (error instanceof Error ? error.message : 'Failed to process your request. Please try again.'),
           variant: 'destructive',
         });
       }
