@@ -30,12 +30,18 @@ jobs:
           CONFIG_ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
           CONFIG_LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
           CONFIG_AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          CONFIG_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONFIG_STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          CONFIG_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           missing=()
           [ -z "${CONFIG_AWS_REGION}" ] && missing+=("AWS_REGION (Repository variable)")
           [ -z "${CONFIG_ECR_REPOSITORY}" ] && missing+=("ECR_REPOSITORY (Repository variable)")
           [ -z "${CONFIG_LAMBDA_FUNCTION_NAME}" ] && missing+=("LAMBDA_FUNCTION_NAME (Repository variable)")
           [ -z "${CONFIG_AWS_DEPLOY_ROLE_ARN}" ] && missing+=("AWS_DEPLOY_ROLE_ARN (Secret)")
+          [ -z "${CONFIG_OPENAI_API_KEY}" ] && missing+=("OPENAI_API_KEY (Secret)")
+          [ -z "${CONFIG_STRIPE_SECRET_KEY}" ] && missing+=("STRIPE_SECRET_KEY (Secret)")
+          [ -z "${CONFIG_STRIPE_WEBHOOK_SECRET}" ] && missing+=("STRIPE_WEBHOOK_SECRET (Secret)")
 
           if [ ${#missing[@]} -gt 0 ]; then
             printf "\nThe deployment workflow is missing required configuration:\n\n"
@@ -74,3 +80,34 @@ jobs:
           aws lambda update-function-code \
             --function-name "${LAMBDA_FUNCTION_NAME}" \
             --image-uri "${IMAGE_URI}"
+
+          aws lambda wait function-updated \
+            --function-name "${LAMBDA_FUNCTION_NAME}"
+
+      - name: Update Lambda environment secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --query 'Environment.Variables' \
+            --output json > current-env.json
+
+          jq -n --slurpfile current current-env.json '
+            {
+              Variables: (($current[0] // {}) + {
+                OPENAI_API_KEY: env.OPENAI_API_KEY,
+                STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY,
+                STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET
+              })
+            }
+          ' > lambda-env.json
+
+          aws lambda update-function-configuration \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --environment file://lambda-env.json
+
+          aws lambda wait function-updated \
+            --function-name "${LAMBDA_FUNCTION_NAME}"
